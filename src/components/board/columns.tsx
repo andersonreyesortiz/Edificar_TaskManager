@@ -28,7 +28,7 @@ import {
   type ColumnLabel,
   type ColumnValue,
 } from "@/lib/columns";
-import { createColumn, deleteColumn, moveColumn, setBuiltinColumnHidden, setColumnValue, updateColumn } from "@/lib/actions";
+import { createColumn, deleteColumn, setBuiltinColumnHidden, setColumnValue, updateColumn } from "@/lib/actions";
 import { Popover } from "@/components/Popover";
 import { Avatar } from "@/components/Avatar";
 import { AvatarStack } from "./cells";
@@ -306,7 +306,16 @@ function PeopleCell({ selected, people, onSave }: { selected: string[]; people: 
 
 // ---------- encabezados ----------
 
-export function ColumnHeader({ column, canManage, isFirst, isLast }: { column: BoardColumnDef; canManage: boolean; isFirst: boolean; isLast: boolean }) {
+export function ColumnHeader({
+  column,
+  canManage,
+  onMove,
+}: {
+  column: BoardColumnDef;
+  canManage: boolean;
+  /** Mueve la columna una posición; undefined si no puede ir en esa dirección */
+  onMove: { left?: () => void; right?: () => void };
+}) {
   const [, start] = useTransition();
   const Icon = TYPE_ICONS[column.type];
   const [name, setName] = useState(column.name);
@@ -349,12 +358,7 @@ export function ColumnHeader({ column, canManage, isFirst, isLast }: { column: B
           )}
           {hasLabels && <LabelEditor column={column} />}
           <div className="flex items-center gap-1 border-t border-line pt-2">
-            <button disabled={isFirst} onClick={() => start(() => moveColumn(column.id, -1))} className="btn-ghost px-2 disabled:opacity-30" title="Mover a la izquierda">
-              <ArrowLeft size={14} />
-            </button>
-            <button disabled={isLast} onClick={() => start(() => moveColumn(column.id, 1))} className="btn-ghost px-2 disabled:opacity-30" title="Mover a la derecha">
-              <ArrowRight size={14} />
-            </button>
+            <MoveButtons onMove={onMove} />
             {canManage && (
               <button
                 onClick={() => {
@@ -432,9 +436,36 @@ function LabelEditor({ column }: { column: BoardColumnDef }) {
   );
 }
 
-export function BuiltinHeader({ boardId, k, label, canManage }: { boardId: string; k: BuiltinKey; label: string; canManage: boolean }) {
+function MoveButtons({ onMove }: { onMove: { left?: () => void; right?: () => void } }) {
+  return (
+    <>
+      <button disabled={!onMove.left} onClick={onMove.left} className="btn-ghost px-2 disabled:opacity-30" title="Mover a la izquierda">
+        <ArrowLeft size={14} />
+      </button>
+      <button disabled={!onMove.right} onClick={onMove.right} className="btn-ghost px-2 disabled:opacity-30" title="Mover a la derecha">
+        <ArrowRight size={14} />
+      </button>
+    </>
+  );
+}
+
+export function BuiltinHeader({
+  boardId,
+  k,
+  label,
+  canManage,
+  canEdit,
+  onMove,
+}: {
+  boardId: string;
+  k: BuiltinKey;
+  label: string;
+  canManage: boolean;
+  canEdit: boolean;
+  onMove: { left?: () => void; right?: () => void };
+}) {
   const [, start] = useTransition();
-  if (!canManage) return <span className="px-1 font-medium">{label}</span>;
+  if (!canEdit) return <span className="px-1 font-medium">{label}</span>;
   return (
     <Popover
       width={180}
@@ -446,15 +477,22 @@ export function BuiltinHeader({ boardId, k, label, canManage }: { boardId: strin
       )}
     >
       {(close) => (
-        <button
-          onClick={() => {
-            close();
-            start(() => setBuiltinColumnHidden(boardId, k, true));
-          }}
-          className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm font-normal text-ink hover:bg-canvas"
-        >
-          <EyeOff size={14} /> Ocultar columna
-        </button>
+        <div className="text-sm font-normal text-ink">
+          <div className="flex items-center gap-1 px-1 py-1">
+            <MoveButtons onMove={onMove} />
+          </div>
+          {canManage && (
+            <button
+              onClick={() => {
+                close();
+                start(() => setBuiltinColumnHidden(boardId, k, true));
+              }}
+              className="flex w-full items-center gap-2 rounded-md border-t border-line px-2 py-1.5 text-left hover:bg-canvas"
+            >
+              <EyeOff size={14} /> Ocultar columna
+            </button>
+          )}
+        </div>
       )}
     </Popover>
   );

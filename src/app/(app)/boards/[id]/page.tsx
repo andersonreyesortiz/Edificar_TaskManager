@@ -107,6 +107,8 @@ export default async function BoardPage({
         view={currentView}
         columns={columns}
         hidden={hidden}
+        columnOrder={board.columnOrder ?? []}
+        columnWidths={(board.columnWidths ?? {}) as Record<string, number>}
       />
       {openTaskId && <TaskPanel taskId={openTaskId} boardId={board.id} people={people} groups={board.groups} user={user} columns={columns} canEdit={canEdit} />}
     </div>

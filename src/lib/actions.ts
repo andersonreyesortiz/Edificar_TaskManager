@@ -265,6 +265,24 @@ export async function moveColumn(columnId: string, dir: -1 | 1) {
   refresh(col.boardId);
 }
 
+/** Guarda el orden y el ancho de las columnas de la tabla del tablero. */
+export async function setColumnLayout(boardId: string, layout: { order?: string[]; widths?: Record<string, number> }) {
+  const user = await requireUser();
+  await assertBoardEdit(user, boardId);
+  const data: Prisma.BoardUpdateInput = {};
+  if (layout.order) data.columnOrder = layout.order.map(String).slice(0, 100);
+  if (layout.widths) {
+    const widths: Record<string, number> = {};
+    for (const [k, v] of Object.entries(layout.widths).slice(0, 100)) {
+      const n = Math.round(Number(v));
+      if (Number.isFinite(n)) widths[String(k)] = Math.min(800, Math.max(60, n));
+    }
+    data.columnWidths = widths;
+  }
+  await prisma.board.update({ where: { id: boardId }, data });
+  refresh(boardId);
+}
+
 export async function deleteColumn(columnId: string) {
   const user = await requireUser();
   const col = await prisma.boardColumn.findUniqueOrThrow({ where: { id: columnId } });

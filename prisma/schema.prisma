@@ -121,6 +121,10 @@ model Board {
   hiddenColumns String[] @default([])
   /// Mueve cada tarea al grupo de su estado (lo crea si no existe)
   autoGroupByStatus Boolean @default(false)
+  /// Orden de las columnas en la tabla (claves fijas como "status" o ids de columnas personalizadas)
+  columnOrder String[] @default([])
+  /// Ancho en píxeles por columna: { "title": 320, "status": 150, "<id>": 180 }
+  columnWidths Json @default("{}")
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
