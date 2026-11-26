@@ -11,7 +11,7 @@ import { BOARD_COLORS, priorityMeta, statusMeta } from "@/lib/constants";
 import { AuthError } from "next-auth";
 import { notify, sendInvitationEmail } from "@/lib/notify";
 import { BUILTIN_COLUMNS, COLUMN_TYPES, asSettings, columnTypeLabel, defaultSettings, valueToText, type BuiltinKey, type ColumnSettings, type ColumnValue } from "@/lib/columns";
-import { signIn, signOut } from "@/auth";
+import { emailProviderId, signIn, signOut } from "@/auth";
 
 // ---------- utilidades ----------
 
@@ -54,7 +54,7 @@ export async function googleSignIn() {
 }
 
 export async function emailSignIn(formData: FormData) {
-  await trySignIn("resend", { email: str(formData.get("email")) });
+  await trySignIn(emailProviderId, { email: str(formData.get("email")).toLowerCase() });
 }
 
 export async function doSignOut() {

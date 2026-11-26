@@ -33,7 +33,7 @@ function layout(title: string, body: string, cta?: { label: string; href: string
     <div style="background:#fff;border:1px solid #e5e3dc;border-radius:12px;padding:24px;margin-top:16px">
       <h1 style="font-size:18px;margin:0 0 12px">${esc(title)}</h1>
       <div style="font-size:14px;line-height:1.6">${body}</div>
-      ${cta ? `<p style="margin:24px 0 0"><a href="${cta.href}" style="background:#0f6e60;color:#fff;text-decoration:none;padding:10px 16px;border-radius:8px;font-size:14px;display:inline-block">${esc(cta.label)}</a></p>` : ""}
+      ${cta ? `<p style="margin:24px 0 0"><a href="${esc(cta.href)}" style="background:#00A0E3;color:#fff;text-decoration:none;padding:10px 16px;border-radius:8px;font-size:14px;display:inline-block">${esc(cta.label)}</a></p>` : ""}
     </div>
     <p style="font-size:12px;color:#66706d;margin-top:16px">Recibes este correo porque usas ${APP_NAME}, el gestor de tareas de tu equipo.</p>
   </div></body></html>`;

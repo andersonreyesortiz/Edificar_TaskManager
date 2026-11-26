@@ -9,6 +9,8 @@ const errors: Record<string, string> = {
   AccessDenied: "Tu correo no tiene acceso. Pide a un administrador que te invite.",
   CredentialsSignin: "Tu correo no tiene acceso. Pide a un administrador que te invite.",
   Verification: "El enlace ya expiró o ya se usó. Pide uno nuevo.",
+  EmailSignin: "No pudimos enviar el enlace. Intenta de nuevo en unos minutos.",
+  EmailSignInError: "No pudimos enviar el enlace. Intenta de nuevo en unos minutos.",
 };
 
 export default async function LoginPage({
@@ -38,7 +40,11 @@ export default async function LoginPage({
           </div>
           <h1 className="mt-10 text-[26px] font-semibold leading-tight tracking-tight text-[#1d1f24]">Bienvenido a tu espacio de trabajo</h1>
           <p className="mt-2 text-sm leading-relaxed text-[#5b6068]">
-            Entra con tu cuenta de Google de Edificar, o con el correo donde recibiste tu invitación.
+            {google && emailEnabled
+              ? "Entra con tu cuenta de Google. Si no usas Google, te enviamos un enlace de acceso al correo donde recibiste tu invitación."
+              : emailEnabled
+                ? "Te enviamos un enlace de acceso al correo donde recibiste tu invitación."
+                : "Entra con la cuenta de Google donde recibiste tu invitación."}
           </p>
 
           {error && (
@@ -48,7 +54,7 @@ export default async function LoginPage({
           )}
           {check && (
             <p className="mt-6 rounded-lg border border-[#00A0E3]/30 bg-[#00A0E3]/10 px-3 py-2 text-sm text-[#005f87]">
-              Te enviamos un enlace de acceso. Revisa tu correo.
+              Te enviamos un enlace de acceso. Revisa tu correo (también la carpeta de spam); el enlace vence en 30 minutos.
             </p>
           )}
 
@@ -67,9 +73,15 @@ export default async function LoginPage({
               </form>
             )}
 
+            {google && emailEnabled && (
+              <div className="flex items-center gap-3 text-[11px] font-medium uppercase tracking-[0.18em] text-[#8a8f97]">
+                <span className="h-px flex-1 bg-[#d5d7db]" />o con tu correo<span className="h-px flex-1 bg-[#d5d7db]" />
+              </div>
+            )}
+
             {emailEnabled && (
               <form action={emailSignIn} className="space-y-2">
-                <label className="label" htmlFor="email">¿No usas Google? Te enviamos un enlace</label>
+                <label className="label" htmlFor="email">¿No usas Google? Te enviamos un enlace de acceso</label>
                 <input id="email" name="email" type="email" required defaultValue={email} placeholder="tu@correo.com" className="input" />
                 <button className="w-full rounded-lg bg-[#00A0E3] py-2 text-sm font-medium text-white hover:bg-[#008cc7]">Enviarme un enlace de acceso</button>
               </form>
@@ -85,7 +97,7 @@ export default async function LoginPage({
 
             {!google && !emailEnabled && !dev && (
               <p className="text-sm text-red-700">
-                No hay ningún método de acceso configurado. Revisa las variables AUTH_GOOGLE_ID y AUTH_RESEND_KEY.
+                No hay ningún método de acceso configurado. Revisa las variables AUTH_GOOGLE_ID o SMTP_HOST.
               </p>
             )}
           </div>

@@ -2,6 +2,8 @@ import { APP_NAME } from "@/lib/constants";
 import NextAuth, { type NextAuthConfig } from "next-auth";
 import Google from "next-auth/providers/google";
 import Resend from "next-auth/providers/resend";
+import Nodemailer from "next-auth/providers/nodemailer";
+import { esc, mailEnabled, sendMail } from "@/lib/mailer";
 import Credentials from "next-auth/providers/credentials";
 import { PrismaAdapter } from "@auth/prisma-adapter";
 import type { Role } from "@prisma/client";
@@ -63,6 +65,36 @@ if (process.env.AUTH_RESEND_KEY) {
   );
 }
 
+// Enlace de acceso por correo usando el mismo SMTP de las notificaciones.
+// Solo llega a correos con invitación (el callback signIn lo revisa antes de enviar).
+if (mailEnabled && !process.env.AUTH_RESEND_KEY) {
+  providers.push(
+    Nodemailer({
+      server: {
+        host: process.env.SMTP_HOST,
+        port: Number(process.env.SMTP_PORT ?? 465),
+        secure: Number(process.env.SMTP_PORT ?? 465) === 465,
+        auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
+      },
+      from: process.env.MAIL_FROM ?? `${APP_NAME} <${process.env.SMTP_USER}>`,
+      maxAge: 30 * 60,
+      async sendVerificationRequest({ identifier, url }) {
+        const ok = await sendMail(
+          identifier,
+          `Tu enlace para entrar a ${APP_NAME}`,
+          "Tu enlace de acceso",
+          `<p>Usa este botón para entrar a ${APP_NAME} como <b>${esc(identifier)}</b>.</p>
+           <p>El enlace funciona una sola vez y vence en 30 minutos. Si no lo pediste, ignora este correo.</p>`,
+          { label: `Entrar a ${APP_NAME}`, href: url },
+        );
+        if (!ok) throw new Error("No se pudo enviar el enlace de acceso");
+      },
+    }),
+  );
+}
+
+export const emailProviderId = process.env.AUTH_RESEND_KEY ? "resend" : "nodemailer";
+
 export const devLoginEnabled = process.env.AUTH_DEV_LOGIN === "true";
 
 if (devLoginEnabled) {
@@ -119,6 +151,6 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
 
 export const enabledProviders = {
   google: Boolean(process.env.AUTH_GOOGLE_ID && process.env.AUTH_GOOGLE_SECRET),
-  email: Boolean(process.env.AUTH_RESEND_KEY),
+  email: Boolean(process.env.AUTH_RESEND_KEY) || mailEnabled,
   dev: devLoginEnabled,
 };
