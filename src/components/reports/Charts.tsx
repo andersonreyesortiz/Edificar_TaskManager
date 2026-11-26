@@ -4,7 +4,7 @@ import { Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, Tooltip, XAxis
 import type { TaskStatus } from "@prisma/client";
 import { formatMinutes, statusMeta } from "@/lib/constants";
 
-const BAR = "#14a38b";
+const BAR = "#00A0E3";
 const AXIS = { fontSize: 11, fill: "#66706d" };
 
 type TipProps = { active?: boolean; payload?: { value: number; payload: { label: string } }[] };
@@ -21,15 +21,15 @@ function HoursTooltip({ active, payload }: TipProps) {
 
 const hours = (m: number) => Math.round((m / 60) * 100) / 100;
 
-export function HoursOverTime({ data }: { data: { label: string; minutes: number }[] }) {
+export function HoursOverTime({ data, height = 240 }: { data: { label: string; minutes: number }[]; height?: number }) {
   const rows = data.map((d) => ({ label: d.label, hours: hours(d.minutes) }));
   return (
-    <ResponsiveContainer width="100%" height={240}>
+    <ResponsiveContainer width="100%" height={height}>
       <BarChart data={rows} margin={{ top: 8, right: 8, bottom: 0, left: -16 }} barCategoryGap={2}>
         <CartesianGrid vertical={false} stroke="#eeece6" />
         <XAxis dataKey="label" tick={AXIS} tickLine={false} axisLine={{ stroke: "#e5e3dc" }} interval="preserveStartEnd" minTickGap={16} />
         <YAxis tick={AXIS} tickLine={false} axisLine={false} unit=" h" allowDecimals={false} />
-        <Tooltip content={<HoursTooltip />} cursor={{ fill: "rgba(15,110,96,0.06)" }} />
+        <Tooltip content={<HoursTooltip />} cursor={{ fill: "rgba(0,160,227,0.08)" }} />
         <Bar animationDuration={400} dataKey="hours" fill={BAR} radius={[4, 4, 0, 0]} maxBarSize={36} />
       </BarChart>
     </ResponsiveContainer>
@@ -44,7 +44,7 @@ export function HoursRanking({ data }: { data: { label: string; minutes: number 
       <BarChart data={rows} layout="vertical" margin={{ top: 0, right: 56, bottom: 0, left: 0 }} barCategoryGap={6}>
         <XAxis type="number" hide />
         <YAxis type="category" dataKey="label" width={140} tick={{ ...AXIS, fill: "#1c2321" }} tickLine={false} axisLine={false} />
-        <Tooltip content={<HoursTooltip />} cursor={{ fill: "rgba(15,110,96,0.06)" }} />
+        <Tooltip content={<HoursTooltip />} cursor={{ fill: "rgba(0,160,227,0.08)" }} />
         <Bar
           dataKey="hours"
           fill={BAR}

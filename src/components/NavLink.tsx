@@ -2,10 +2,10 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { BarChart3, CheckSquare, Clock, Home, Users } from "lucide-react";
+import { BarChart3, CheckSquare, Clock, Home, LayoutDashboard, Users } from "lucide-react";
 import clsx from "clsx";
 
-const icons = { home: Home, check: CheckSquare, chart: BarChart3, clock: Clock, users: Users };
+const icons = { dashboard: LayoutDashboard, home: Home, check: CheckSquare, chart: BarChart3, clock: Clock, users: Users };
 
 export function NavLink({
   href,

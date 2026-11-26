@@ -28,7 +28,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   return (
     <div className="flex min-h-screen">
-      <aside className="sticky top-0 hidden h-screen w-64 shrink-0 flex-col border-r border-line bg-white md:flex">
+      <aside className="sticky top-0 hidden h-screen w-64 shrink-0 flex-col border-r border-line bg-white md:flex print:hidden">
         <div className="px-5 py-4">
           <Link href="/">
             <Logo />
@@ -36,6 +36,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         </div>
         <nav className="space-y-0.5 px-3 text-sm">
           <NavLink href="/" icon="home">Inicio</NavLink>
+          <NavLink href="/dashboard" icon="dashboard">Resumen ejecutivo</NavLink>
           <NavLink href="/my-tasks" icon="check">Mis tareas</NavLink>
           <NavLink href="/reports" icon="chart">Reportes</NavLink>
           <NavLink href="/activity" icon="clock">Actividad</NavLink>
@@ -66,11 +67,12 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="sticky top-0 z-20 flex h-14 items-center gap-3 border-b border-line bg-white/90 px-4 backdrop-blur md:px-8">
+        <header className="sticky top-0 z-20 flex h-14 items-center gap-3 border-b border-line bg-white/90 px-4 backdrop-blur md:px-8 print:hidden">
           <div className="md:hidden">
             <Link href="/"><Logo size={24} /></Link>
           </div>
           <nav className="flex min-w-0 gap-1 overflow-x-auto text-sm md:hidden">
+            <Link className="btn-ghost shrink-0" href="/dashboard">Resumen</Link>
             <Link className="btn-ghost shrink-0" href="/my-tasks">Mis tareas</Link>
             <Link className="btn-ghost shrink-0" href="/reports">Reportes</Link>
             <Link className="btn-ghost shrink-0" href="/activity">Actividad</Link>
