@@ -9,6 +9,7 @@ import { requireAdmin, requireUser } from "@/lib/session";
 import { assertBoardAccess, assertTaskAccess, canManageBoard } from "@/lib/access";
 import { BOARD_COLORS, priorityMeta, statusMeta } from "@/lib/constants";
 import { AuthError } from "next-auth";
+import { notify, sendInvitationEmail } from "@/lib/notify";
 import { signIn, signOut } from "@/auth";
 
 // ---------- utilidades ----------
@@ -23,6 +24,8 @@ function refresh(boardId?: string) {
   if (boardId) revalidatePath(`/boards/${boardId}`);
   revalidatePath("/", "layout");
 }
+
+const escapeHtml = (s: string) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
 
 const str = (v: FormDataEntryValue | null) => (typeof v === "string" ? v.trim() : "");
 
@@ -112,6 +115,13 @@ export async function addBoardMember(boardId: string, userId: string) {
     update: {},
   });
   await log(user, "board.member_added", `agregó a ${member.name ?? member.email} al tablero`, { boardId });
+  const board = await prisma.board.findUniqueOrThrow({ where: { id: boardId }, select: { name: true } });
+  await notify(user, [userId], {
+    text: `te agregó al tablero «${board.name}»`,
+    link: `/boards/${boardId}`,
+    subject: `Te agregaron al tablero «${board.name}»`,
+    cta: "Abrir tablero",
+  });
   refresh(boardId);
 }
 
@@ -291,6 +301,20 @@ export async function setTaskAssignees(taskId: string, userIds: string[]) {
   };
   for (const id of added) await log(user, "task.assigned", `asignó a ${name(id)} en «${t.title}»`, { boardId: t.boardId, taskId });
   for (const id of removed) await log(user, "task.unassigned", `quitó a ${name(id)} de «${t.title}»`, { boardId: t.boardId, taskId });
+  if (added.length) {
+    const info = await prisma.task.findUniqueOrThrow({
+      where: { id: taskId },
+      select: { dueDate: true, board: { select: { name: true } } },
+    });
+    const due = info.dueDate ? info.dueDate.toLocaleDateString("es", { day: "numeric", month: "long", timeZone: "UTC" }) : null;
+    await notify(user, added, {
+      text: `te asignó la tarea «${t.title}»`,
+      link: `/boards/${t.boardId}?task=${taskId}`,
+      subject: `Nueva tarea asignada: ${t.title}`,
+      detailHtml: `<p>Tablero: <b>${escapeHtml(info.board.name)}</b>${due ? `<br>Fecha límite: <b>${due}</b>` : ""}</p>`,
+      cta: "Ver tarea",
+    });
+  }
   refresh(t.boardId);
 }
 
@@ -314,6 +338,17 @@ export async function addComment(taskId: string, body: string) {
   if (!body.trim()) return;
   await prisma.comment.create({ data: { taskId, userId: user.id, body: body.trim() } });
   await log(user, "task.comment", `comentó en «${t.title}»`, { boardId: t.boardId, taskId });
+  const people = await prisma.task.findUniqueOrThrow({
+    where: { id: taskId },
+    select: { createdById: true, assignees: { select: { userId: true } } },
+  });
+  await notify(user, [people.createdById, ...people.assignees.map((a) => a.userId)], {
+    text: `comentó en «${t.title}»`,
+    link: `/boards/${t.boardId}?task=${taskId}`,
+    subject: `Nuevo comentario en «${t.title}»`,
+    detailHtml: `<p style="background:#f6f5f1;padding:10px 12px;border-radius:8px">${escapeHtml(body.trim()).replace(/\n/g, "<br>")}</p>`,
+    cta: "Responder",
+  });
   refresh(t.boardId);
 }
 
@@ -413,7 +448,7 @@ export async function inviteUser(formData: FormData) {
     // Ya tiene cuenta: solo se agrega al tablero.
     if (boardId) await addBoardMember(boardId, existing.id);
     revalidatePath("/team");
-    return;
+    return { emailed: false, existing: true };
   }
   await prisma.invitation.upsert({
     where: { email },
@@ -421,7 +456,10 @@ export async function inviteUser(formData: FormData) {
     update: { role, boardId, invitedById: admin.id, acceptedAt: null },
   });
   await log(admin, "team.invited", `invitó a ${email}`, { boardId });
+  const board = boardId ? await prisma.board.findUnique({ where: { id: boardId }, select: { name: true } }) : null;
+  const sent = await sendInvitationEmail(admin, email, board?.name);
   revalidatePath("/team");
+  return { emailed: sent };
 }
 
 export async function revokeInvitation(id: string) {
@@ -448,5 +486,16 @@ export async function updateProfileName(formData: FormData) {
   const user = await requireUser();
   const name = str(formData.get("name"));
   if (name) await prisma.user.update({ where: { id: user.id }, data: { name } });
+  revalidatePath("/", "layout");
+}
+
+// ---------- notificaciones ----------
+
+export async function markNotificationsRead(ids?: string[]) {
+  const user = await requireUser();
+  await prisma.notification.updateMany({
+    where: { userId: user.id, readAt: null, ...(ids ? { id: { in: ids } } : {}) },
+    data: { readAt: new Date() },
+  });
   revalidatePath("/", "layout");
 }

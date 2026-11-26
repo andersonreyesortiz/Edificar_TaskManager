@@ -15,8 +15,16 @@ export function InviteForm({ boards, defaultBoard, isAdmin }: { boards: { id: st
         start(async () => {
           setMsg(null);
           try {
-            await inviteUser(fd);
-            setMsg({ ok: true, text: `Listo. ${fd.get("email")} ya puede entrar. Copia el enlace de abajo y envíaselo.` });
+            const r = await inviteUser(fd);
+            const email = fd.get("email");
+            setMsg({
+              ok: true,
+              text: r?.existing
+                ? `${email} ya tenía cuenta; lo agregamos al tablero y le avisamos.`
+                : r?.emailed
+                  ? `Listo. Le enviamos un correo de invitación a ${email}.`
+                  : `Listo. ${email} ya puede entrar. Copia el enlace de abajo y envíaselo (el envío de correos aún no está activado).`,
+            });
           } catch (e) {
             setMsg({ ok: false, text: e instanceof Error ? e.message : "No se pudo invitar." });
           }

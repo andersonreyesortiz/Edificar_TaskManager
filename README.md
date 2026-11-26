@@ -10,6 +10,7 @@ Gestor de tareas para equipos: tableros, tareas y subtareas, responsables, regis
 - **Registro de tiempos**: cronómetro (uno activo por persona, visible en la barra superior) o captura manual con nota.
 - **Historial de actividad** por tarea y general, filtrable por tablero y persona.
 - **Reportes**: horas por día o semana, por persona, por tablero y por tarea, tareas por estado, vencidas, y descarga de tiempos en CSV.
+- **Notificaciones**: campanita en la app y correo (si se configura SMTP) cuando te asignan una tarea, comentan en tus tareas o te agregan a un tablero. Las invitaciones también se envían por correo.
 - **Acceso**: Google para el personal de la empresa; invitaciones a personas externas con cualquier correo.
 
 ### Roles
@@ -47,7 +48,8 @@ Con los datos de ejemplo, entra en el acceso de prueba con `admin@edificar.com` 
    - URI de redirección: `https://TU-APP.vercel.app/api/auth/callback/google`
    - En la pantalla de consentimiento usa tipo **Externo**, para que también puedan entrar invitados con Gmail.
 3. **Resend** (opcional): crea una API key y verifica tu dominio para enviar los enlaces de acceso a invitados sin Google.
-4. **Vercel**: importa el repositorio y agrega las variables de `.env.example` (sin `AUTH_DEV_LOGIN`). El comando de build ya aplica las migraciones (`prisma migrate deploy`).
+4. **Correo** (opcional): agrega `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS` y `MAIL_FROM`. Con Gmail usa `smtp.gmail.com`, puerto `465` y una clave de aplicación.
+5. **Vercel**: importa el repositorio y agrega las variables de `.env.example` (sin `AUTH_DEV_LOGIN`). El comando de build ya aplica las migraciones (`prisma migrate deploy`).
 
 ## Estructura
 

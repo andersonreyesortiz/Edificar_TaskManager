@@ -5,16 +5,24 @@ import { visibleBoardsWhere } from "@/lib/access";
 import { Logo } from "@/components/Logo";
 import { Avatar } from "@/components/Avatar";
 import { RunningTimer } from "@/components/RunningTimer";
+import { NotificationBell } from "@/components/NotificationBell";
 import { NewBoardButton } from "@/components/NewBoardButton";
 import { NavLink } from "@/components/NavLink";
 import { doSignOut } from "@/lib/actions";
-import { roleMeta } from "@/lib/constants";
+import { fmtDateTime, roleMeta } from "@/lib/constants";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const user = await requireUser();
-  const [boards, running] = await Promise.all([
+  const [boards, running, notifications, unread] = await Promise.all([
     prisma.board.findMany({ where: visibleBoardsWhere(user), orderBy: { createdAt: "asc" }, select: { id: true, name: true, color: true } }),
     prisma.timeEntry.findFirst({ where: { userId: user.id, endedAt: null }, include: { task: { select: { id: true, title: true, boardId: true } } } }),
+    prisma.notification.findMany({
+      where: { userId: user.id },
+      orderBy: { createdAt: "desc" },
+      take: 20,
+      include: { actor: { select: { name: true, email: true, image: true } } },
+    }),
+    prisma.notification.count({ where: { userId: user.id, readAt: null } }),
   ]);
 
   return (
@@ -67,7 +75,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             <Link className="btn-ghost shrink-0" href="/activity">Actividad</Link>
             <Link className="btn-ghost shrink-0" href="/team">Equipo</Link>
           </nav>
-          <div className="ml-auto shrink-0">
+          <div className="ml-auto flex shrink-0 items-center gap-2">
             {running && (
               <RunningTimer
                 startedAt={running.startedAt.toISOString()}
@@ -75,6 +83,17 @@ export default async function AppLayout({ children }: { children: React.ReactNod
                 href={`/boards/${running.task.boardId}?task=${running.task.id}`}
               />
             )}
+            <NotificationBell
+              unread={unread}
+              items={notifications.map((n) => ({
+                id: n.id,
+                text: n.text,
+                link: n.link,
+                read: Boolean(n.readAt),
+                when: fmtDateTime(n.createdAt),
+                actor: n.actor,
+              }))}
+            />
           </div>
         </header>
         <main className="min-w-0 flex-1">{children}</main>

@@ -51,6 +51,8 @@ model User {
   comments       Comment[]
   activities     Activity[]
   invitationsMade Invitation[]  @relation("Inviter")
+  notifications   Notification[] @relation("NotificationUser")
+  notificationsSent Notification[] @relation("NotificationActor")
 }
 
 model Account {
@@ -236,4 +238,19 @@ model Activity {
 
   @@index([boardId, createdAt])
   @@index([taskId, createdAt])
+}
+
+model Notification {
+  id        String    @id @default(cuid())
+  userId    String
+  actorId   String?
+  text      String
+  link      String?
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user  User  @relation("NotificationUser", fields: [userId], references: [id], onDelete: Cascade)
+  actor User? @relation("NotificationActor", fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([userId, readAt, createdAt])
 }
