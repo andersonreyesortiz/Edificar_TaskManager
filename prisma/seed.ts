@@ -16,6 +16,7 @@ const daysAgo = (n: number, hour = 9) => {
 async function main() {
   await prisma.activity.deleteMany();
   await prisma.timeEntry.deleteMany();
+  await prisma.notification.deleteMany();
   await prisma.comment.deleteMany();
   await prisma.task.deleteMany();
   await prisma.group.deleteMany();
@@ -97,7 +98,7 @@ async function main() {
     return b;
   }
 
-  await board(
+  const torre = await board(
     "Proyecto Torre Norte",
     "Diseño y coordinación del edificio de oficinas, fase de anteproyecto.",
     "#0f766e",
@@ -164,6 +165,24 @@ async function main() {
       },
     ],
   );
+
+  // Columnas personalizadas de ejemplo
+  const fase = { listo: "l1", proceso: "l2", detenido: "l3" };
+  const [colFase, colCosto, colRev] = await Promise.all([
+    prisma.boardColumn.create({ data: { boardId: torre.id, name: "Fase", type: "STATUS", position: 0, settings: { labels: [
+      { id: fase.listo, name: "Aprobado", color: "#00c875" }, { id: fase.proceso, name: "En diseño", color: "#fdab3d" }, { id: fase.detenido, name: "Observado", color: "#e2445c" },
+    ] } } }),
+    prisma.boardColumn.create({ data: { boardId: torre.id, name: "Costo estimado", type: "NUMBER", position: 1, settings: { unit: "Q" } } }),
+    prisma.boardColumn.create({ data: { boardId: torre.id, name: "Revisado", type: "CHECKBOX", position: 2, settings: {} } }),
+  ]);
+  const torreTasks = await prisma.task.findMany({ where: { boardId: torre.id, parentId: null }, orderBy: { createdAt: "asc" } });
+  for (const [i, t] of torreTasks.entries()) {
+    await prisma.taskColumnValue.createMany({ data: [
+      { taskId: t.id, columnId: colFase.id, value: [fase.proceso, fase.listo, fase.detenido][i % 3] },
+      { taskId: t.id, columnId: colCosto.id, value: 12500 + i * 4300 },
+      ...(i % 2 ? [{ taskId: t.id, columnId: colRev.id, value: true }] : []),
+    ] });
+  }
 
   await board(
     "Licitación Residencial Las Flores",

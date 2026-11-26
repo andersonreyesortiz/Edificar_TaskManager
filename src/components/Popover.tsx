@@ -11,11 +11,13 @@ export function Popover({
   children,
   align = "left",
   width = 220,
+  className = "relative inline-block",
 }: {
   trigger: (open: boolean) => React.ReactNode;
   children: (close: () => void) => React.ReactNode;
   align?: "left" | "right";
   width?: number;
+  className?: string;
 }) {
   const [open, setOpen] = useState(false);
   const [pos, setPos] = useState<{ top: number; left: number; maxHeight: number } | null>(null);
@@ -66,7 +68,7 @@ export function Popover({
   }, [open]);
 
   return (
-    <div ref={ref} className="relative inline-block">
+    <div ref={ref} className={className}>
       <div ref={triggerRef} onClick={() => setOpen((o) => !o)}>{trigger(open)}</div>
       {open && pos && (
         <div

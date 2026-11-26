@@ -6,6 +6,7 @@ import { BoardView } from "@/components/board/BoardView";
 import { BoardHeader } from "@/components/board/BoardHeader";
 import { TaskPanel } from "@/components/task/TaskPanel";
 import type { BoardTask, Person } from "@/components/board/types";
+import { asSettings, type BoardColumnDef, type BuiltinKey, type ColumnValue } from "@/lib/columns";
 
 const personSelect = { id: true, name: true, email: true, image: true } as const;
 
@@ -27,6 +28,7 @@ export default async function BoardPage({
       owner: { select: personSelect },
       members: { include: { user: { select: personSelect } }, orderBy: { addedAt: "asc" } },
       groups: { orderBy: { position: "asc" } },
+      columns: { orderBy: [{ position: "asc" }, { createdAt: "asc" }] },
     },
   });
   if (!board || board.archived) notFound();
@@ -35,7 +37,7 @@ export default async function BoardPage({
     prisma.task.findMany({
       where: { boardId: id, parentId: null },
       orderBy: [{ position: "asc" }, { createdAt: "asc" }],
-      include: { assignees: { include: { user: { select: personSelect } } } },
+      include: { assignees: { include: { user: { select: personSelect } } }, values: { select: { columnId: true, value: true } } },
     }),
     prisma.task.findMany({ where: { boardId: id, parentId: { not: null } }, select: { id: true, parentId: true, status: true } }),
     prisma.timeEntry.groupBy({ by: ["taskId"], where: { task: { boardId: id } }, _sum: { minutes: true } }),
@@ -61,6 +63,7 @@ export default async function BoardPage({
       subtaskDone: subs.filter((s) => s.status === "DONE").length,
       minutes: (minutesOf.get(t.id) ?? 0) + subs.reduce((a, s) => a + (minutesOf.get(s.id) ?? 0), 0),
       running: runningIds.has(t.id) || subs.some((s) => runningIds.has(s.id)),
+      values: Object.fromEntries(t.values.map((v) => [v.columnId, v.value as ColumnValue])),
     };
   });
 
@@ -70,6 +73,8 @@ export default async function BoardPage({
   const people = [...peopleMap.values()];
   const canManage = await canManageBoard(user, id);
   const currentView = view === "kanban" ? "kanban" : "table";
+  const columns: BoardColumnDef[] = board.columns.map((c) => ({ id: c.id, name: c.name, type: c.type, position: c.position, settings: asSettings(c.settings) }));
+  const hidden = (board.hiddenColumns ?? []) as BuiltinKey[];
 
   return (
     <div className="px-4 py-6 md:px-8">
@@ -93,8 +98,10 @@ export default async function BoardPage({
         meId={user.id}
         canManage={canManage}
         view={currentView}
+        columns={columns}
+        hidden={hidden}
       />
-      {openTaskId && <TaskPanel taskId={openTaskId} boardId={board.id} people={people} groups={board.groups} user={user} />}
+      {openTaskId && <TaskPanel taskId={openTaskId} boardId={board.id} people={people} groups={board.groups} user={user} columns={columns} />}
     </div>
   );
 }

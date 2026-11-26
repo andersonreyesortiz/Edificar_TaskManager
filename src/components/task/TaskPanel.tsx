@@ -4,6 +4,9 @@ import { fmtDate, fmtDateTime, formatMinutes } from "@/lib/constants";
 import { Avatar } from "@/components/Avatar";
 import { AssigneePicker, DateCell, PrioritySelect, StatusSelect } from "@/components/board/cells";
 import type { Person } from "@/components/board/types";
+import { ColumnCell } from "@/components/board/columns";
+import { TYPE_ICONS } from "@/components/board/column-icons";
+import type { BoardColumnDef, ColumnValue } from "@/lib/columns";
 import {
   CloseButton,
   CommentForm,
@@ -30,12 +33,14 @@ export async function TaskPanel({
   people,
   groups,
   user,
+  columns,
 }: {
   taskId: string;
   boardId: string;
   people: Person[];
   groups: Group[];
   user: User;
+  columns: BoardColumnDef[];
 }) {
   const task = await prisma.task.findUnique({
     where: { id: taskId },
@@ -50,6 +55,7 @@ export async function TaskPanel({
       timeEntries: { orderBy: { startedAt: "desc" }, include: { user: { select: personSelect } } },
       comments: { orderBy: { createdAt: "asc" }, include: { user: { select: personSelect } } },
       activities: { orderBy: { createdAt: "desc" }, take: 30, include: { user: { select: personSelect } } },
+      values: { select: { columnId: true, value: true } },
     },
   });
   if (!task || task.boardId !== boardId) return null;
@@ -58,6 +64,7 @@ export async function TaskPanel({
   const ownMinutes = task.timeEntries.reduce((a, e) => a + e.minutes, 0);
   const subMinutes = task.subtasks.reduce((a, s) => a + s.timeEntries.reduce((b, e) => b + e.minutes, 0), 0);
   const total = ownMinutes + subMinutes;
+  const values = Object.fromEntries(task.values.map((v) => [v.columnId, v.value as ColumnValue]));
   const byPerson = new Map<string, { person: Person; minutes: number }>();
   for (const e of task.timeEntries) {
     const cur = byPerson.get(e.userId) ?? { person: e.user, minutes: 0 };
@@ -104,6 +111,15 @@ export async function TaskPanel({
               <dd><GroupSelect taskId={task.id} groupId={task.groupId} groups={groups.map((g) => ({ id: g.id, name: g.name, color: g.color }))} /></dd>
             </>
           )}
+          {columns.map((c) => {
+            const Icon = TYPE_ICONS[c.type];
+            return (
+              <div key={c.id} className="contents">
+                <dt className="flex min-w-0 items-center gap-1.5 text-muted"><Icon size={13} className="shrink-0" /><span className="truncate">{c.name}</span></dt>
+                <dd className="min-w-0 max-w-xs"><ColumnCell taskId={task.id} column={c} value={values[c.id] ?? null} people={people} wide /></dd>
+              </div>
+            );
+          })}
         </dl>
 
         <section>

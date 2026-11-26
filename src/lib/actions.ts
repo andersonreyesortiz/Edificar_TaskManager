@@ -3,13 +3,14 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
-import type { Priority, Role, TaskStatus, User } from "@prisma/client";
+import type { ColumnType, Prisma, Priority, Role, TaskStatus, User } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireAdmin, requireUser } from "@/lib/session";
 import { assertBoardAccess, assertTaskAccess, canManageBoard } from "@/lib/access";
 import { BOARD_COLORS, priorityMeta, statusMeta } from "@/lib/constants";
 import { AuthError } from "next-auth";
 import { notify, sendInvitationEmail } from "@/lib/notify";
+import { BUILTIN_COLUMNS, COLUMN_TYPES, asSettings, columnTypeLabel, defaultSettings, valueToText, type BuiltinKey, type ColumnSettings, type ColumnValue } from "@/lib/columns";
 import { signIn, signOut } from "@/auth";
 
 // ---------- utilidades ----------
@@ -163,6 +164,134 @@ export async function deleteGroup(groupId: string) {
   await prisma.group.delete({ where: { id: groupId } });
   await log(user, "group.deleted", `borró el grupo «${g.name}» y sus tareas`, { boardId: g.boardId });
   refresh(g.boardId);
+}
+
+// ---------- columnas personalizadas ----------
+
+async function columnWithAccess(user: User, columnId: string) {
+  const col = await prisma.boardColumn.findUniqueOrThrow({ where: { id: columnId } });
+  await assertBoardAccess(user, col.boardId);
+  return col;
+}
+
+export async function createColumn(boardId: string, name: string, type: ColumnType) {
+  const user = await requireUser();
+  await assertBoardAccess(user, boardId);
+  if (!COLUMN_TYPES.some((t) => t.value === type)) throw new Error("Tipo de columna no válido.");
+  const clean = name.trim().slice(0, 60) || columnTypeLabel(type);
+  const last = await prisma.boardColumn.findFirst({ where: { boardId }, orderBy: { position: "desc" } });
+  await prisma.boardColumn.create({
+    data: { boardId, name: clean, type, position: (last?.position ?? -1) + 1, settings: defaultSettings(type) as Prisma.InputJsonValue },
+  });
+  await log(user, "column.created", `agregó la columna «${clean}» (${columnTypeLabel(type)})`, { boardId });
+  refresh(boardId);
+}
+
+export async function updateColumn(columnId: string, data: { name?: string; settings?: ColumnSettings }) {
+  const user = await requireUser();
+  const col = await columnWithAccess(user, columnId);
+  const name = data.name?.trim().slice(0, 60);
+  await prisma.boardColumn.update({
+    where: { id: columnId },
+    data: {
+      ...(name ? { name } : {}),
+      ...(data.settings ? { settings: { ...asSettings(col.settings), ...asSettings(data.settings) } as Prisma.InputJsonValue } : {}),
+    },
+  });
+  if (name && name !== col.name) await log(user, "column.renamed", `renombró la columna «${col.name}» a «${name}»`, { boardId: col.boardId });
+  refresh(col.boardId);
+}
+
+export async function moveColumn(columnId: string, dir: -1 | 1) {
+  const user = await requireUser();
+  const col = await columnWithAccess(user, columnId);
+  const cols = await prisma.boardColumn.findMany({ where: { boardId: col.boardId }, orderBy: [{ position: "asc" }, { createdAt: "asc" }] });
+  const i = cols.findIndex((c) => c.id === columnId);
+  const j = i + dir;
+  if (j < 0 || j >= cols.length) return;
+  [cols[i], cols[j]] = [cols[j], cols[i]];
+  await prisma.$transaction(cols.map((c, position) => prisma.boardColumn.update({ where: { id: c.id }, data: { position } })));
+  refresh(col.boardId);
+}
+
+export async function deleteColumn(columnId: string) {
+  const user = await requireUser();
+  const col = await prisma.boardColumn.findUniqueOrThrow({ where: { id: columnId } });
+  if (!(await canManageBoard(user, col.boardId))) throw new Error("Solo el dueño del tablero puede borrar columnas.");
+  await prisma.boardColumn.delete({ where: { id: columnId } });
+  await log(user, "column.deleted", `borró la columna «${col.name}»`, { boardId: col.boardId });
+  refresh(col.boardId);
+}
+
+export async function setBuiltinColumnHidden(boardId: string, key: BuiltinKey, hidden: boolean) {
+  const user = await requireUser();
+  if (!(await canManageBoard(user, boardId))) throw new Error("Solo el dueño del tablero puede ocultar columnas.");
+  if (!BUILTIN_COLUMNS.some((c) => c.key === key)) throw new Error("Columna no válida.");
+  const b = await prisma.board.findUniqueOrThrow({ where: { id: boardId }, select: { hiddenColumns: true } });
+  const set = new Set(b.hiddenColumns);
+  if (hidden) set.add(key);
+  else set.delete(key);
+  await prisma.board.update({ where: { id: boardId }, data: { hiddenColumns: [...set] } });
+  refresh(boardId);
+}
+
+function cleanValue(type: ColumnType, settings: ColumnSettings, v: unknown): ColumnValue {
+  if (v === null || v === undefined || v === "") return null;
+  const ids = new Set((settings.labels ?? []).map((l) => l.id));
+  switch (type) {
+    case "TEXT":
+    case "LINK":
+    case "EMAIL":
+    case "PHONE":
+      return String(v).trim().slice(0, 2000) || null;
+    case "NUMBER": {
+      const n = Number(v);
+      return Number.isFinite(n) ? n : null;
+    }
+    case "RATING": {
+      const n = Math.round(Number(v));
+      return n >= 1 && n <= 5 ? n : null;
+    }
+    case "CHECKBOX":
+      return v === true ? true : null;
+    case "DATE":
+      return /^\d{4}-\d{2}-\d{2}$/.test(String(v)) ? String(v) : null;
+    case "STATUS":
+      return ids.has(String(v)) ? String(v) : null;
+    case "DROPDOWN": {
+      const arr = (Array.isArray(v) ? v : []).map(String).filter((x) => ids.has(x));
+      return arr.length ? [...new Set(arr)] : null;
+    }
+    case "PEOPLE": {
+      const arr = (Array.isArray(v) ? v : []).map(String);
+      return arr.length ? [...new Set(arr)] : null;
+    }
+  }
+}
+
+export async function setColumnValue(taskId: string, columnId: string, raw: ColumnValue) {
+  const user = await requireUser();
+  const t = await assertTaskAccess(user, taskId);
+  const col = await prisma.boardColumn.findUniqueOrThrow({ where: { id: columnId } });
+  if (col.boardId !== t.boardId) throw new Error("La columna no es de este tablero.");
+  const settings = asSettings(col.settings);
+  const value = cleanValue(col.type, settings, raw);
+  if (value === null) {
+    await prisma.taskColumnValue.deleteMany({ where: { taskId, columnId } });
+  } else {
+    await prisma.taskColumnValue.upsert({
+      where: { taskId_columnId: { taskId, columnId } },
+      create: { taskId, columnId, value: value as Prisma.InputJsonValue },
+      update: { value: value as Prisma.InputJsonValue },
+    });
+  }
+  const def = { id: col.id, name: col.name, type: col.type, position: col.position, settings };
+  const people = col.type === "PEOPLE" && Array.isArray(value)
+    ? await prisma.user.findMany({ where: { id: { in: value } }, select: { id: true, name: true, email: true } })
+    : [];
+  const text = valueToText(def, value, people);
+  await log(user, "task.column", text ? `cambió «${col.name}» de «${t.title}» a ${text}` : `vació «${col.name}» en «${t.title}»`, { boardId: t.boardId, taskId });
+  refresh(t.boardId);
 }
 
 // ---------- tareas ----------

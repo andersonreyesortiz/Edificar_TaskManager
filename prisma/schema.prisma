@@ -117,12 +117,15 @@ model Board {
   color       String   @default("#0f766e")
   ownerId     String
   archived    Boolean  @default(false)
+  /// Columnas fijas que el dueño ocultó: people, status, priority, due, time
+  hiddenColumns String[] @default([])
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
   owner       User          @relation("BoardOwner", fields: [ownerId], references: [id])
   members     BoardMember[]
   groups      Group[]
+  columns     BoardColumn[]
   tasks       Task[]
   activities  Activity[]
   invitations Invitation[]
@@ -178,6 +181,7 @@ model Task {
   assignees   TaskAssignee[]
   timeEntries TimeEntry[]
   comments    Comment[]
+  values      TaskColumnValue[]
   activities  Activity[]
 
   @@index([boardId])
@@ -253,4 +257,49 @@ model Notification {
   actor User? @relation("NotificationActor", fields: [actorId], references: [id], onDelete: SetNull)
 
   @@index([userId, readAt, createdAt])
+}
+
+enum ColumnType {
+  TEXT
+  NUMBER
+  STATUS
+  DROPDOWN
+  DATE
+  PEOPLE
+  CHECKBOX
+  LINK
+  EMAIL
+  PHONE
+  RATING
+}
+
+/// Columna personalizada de un tablero (como en monday: el tipo define cómo se edita).
+model BoardColumn {
+  id        String     @id @default(cuid())
+  boardId   String
+  name      String
+  type      ColumnType
+  position  Int        @default(0)
+  /// Opciones del tipo: { labels: [{ id, name, color }] } para estado/etiquetas, { unit } para número
+  settings  Json       @default("{}")
+  createdAt DateTime   @default(now())
+
+  board  Board             @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  values TaskColumnValue[]
+
+  @@index([boardId])
+}
+
+/// Valor de una columna personalizada para una tarea.
+model TaskColumnValue {
+  taskId    String
+  columnId  String
+  value     Json
+  updatedAt DateTime @updatedAt
+
+  task   Task        @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  column BoardColumn @relation(fields: [columnId], references: [id], onDelete: Cascade)
+
+  @@id([taskId, columnId])
+  @@index([columnId])
 }

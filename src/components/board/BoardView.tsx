@@ -9,6 +9,8 @@ import { STATUSES, formatMinutes } from "@/lib/constants";
 import { createGroup, createTask, deleteGroup, renameGroup, startTimer, stopTimer, updateTaskStatus } from "@/lib/actions";
 import { AssigneePicker, AvatarStack, DateCell, PriorityFlag, PrioritySelect, StatusSelect } from "./cells";
 import type { BoardGroup, BoardTask, Person } from "./types";
+import { BUILTIN_COLUMNS, type BoardColumnDef, type BuiltinKey } from "@/lib/columns";
+import { AddColumnButton, BuiltinHeader, ColumnCell, ColumnHeader, ColumnSummary } from "./columns";
 
 type Props = {
   boardId: string;
@@ -18,6 +20,8 @@ type Props = {
   meId: string;
   canManage: boolean;
   view: "table" | "kanban";
+  columns: BoardColumnDef[];
+  hidden: BuiltinKey[];
 };
 
 export function BoardView(props: Props) {
@@ -168,7 +172,22 @@ function GroupHeader({ group, count, minutes, collapsed, onToggle, canManage }: 
   );
 }
 
-function TableView({ boardId, groups, tasks, people, canManage }: Props) {
+const BUILTIN_WIDTH: Record<BuiltinKey, number> = { people: 128, status: 144, priority: 128, due: 144, time: 128 };
+const TYPE_WIDTH: Record<string, number> = { STATUS: 140, DROPDOWN: 180, PEOPLE: 120, TEXT: 180, LINK: 180, EMAIL: 190, PHONE: 140, NUMBER: 110, DATE: 130, CHECKBOX: 90, RATING: 120 };
+
+function TableView({ boardId, groups, tasks, people, canManage, columns, hidden }: Props) {
+  const builtins = BUILTIN_COLUMNS.filter((b) => !hidden.includes(b.key));
+  const minWidth = 300 + builtins.reduce((a, b) => a + BUILTIN_WIDTH[b.key], 0) + columns.reduce((a, c) => a + (TYPE_WIDTH[c.type] ?? 140), 0) + 44;
+  const hasSummary = columns.some((c) => c.type === "NUMBER" || c.type === "STATUS" || c.type === "CHECKBOX");
+  const builtinCell = (k: BuiltinKey, t: BoardTask) => {
+    switch (k) {
+      case "people": return <AssigneePicker taskId={t.id} assignees={t.assignees} people={people} />;
+      case "status": return <StatusSelect taskId={t.id} status={t.status} />;
+      case "priority": return <PrioritySelect taskId={t.id} priority={t.priority} />;
+      case "due": return <DateCell taskId={t.id} value={t.dueDate} done={t.status === "DONE"} />;
+      case "time": return <TimeCell task={t} />;
+    }
+  };
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const href = useOpenTask();
   const [newGroup, setNewGroup] = useState("");
@@ -192,15 +211,29 @@ function TableView({ boardId, groups, tasks, people, canManage }: Props) {
             />
             {!collapsed[g.id] && (
               <div className="card overflow-x-auto" style={{ borderLeft: `4px solid ${g.color}` }}>
-                <table className="w-full min-w-[860px] text-sm">
+                <table className="w-full table-fixed text-sm" style={{ minWidth }}>
+                  <colgroup>
+                    <col style={{ minWidth: 300 }} />
+                    {builtins.map((b) => <col key={b.key} style={{ width: BUILTIN_WIDTH[b.key] }} />)}
+                    {columns.map((c) => <col key={c.id} style={{ width: TYPE_WIDTH[c.type] ?? 140 }} />)}
+                    <col style={{ width: 44 }} />
+                  </colgroup>
                   <thead>
                     <tr className="border-b border-line text-left text-xs text-muted">
                       <th className="px-3 py-2 font-medium">Tarea</th>
-                      <th className="w-32 px-2 py-2 font-medium">Responsables</th>
-                      <th className="w-36 px-2 py-2 font-medium">Estado</th>
-                      <th className="w-32 px-2 py-2 font-medium">Prioridad</th>
-                      <th className="w-36 px-2 py-2 font-medium">Fecha límite</th>
-                      <th className="w-32 px-2 py-2 font-medium">Tiempo</th>
+                      {builtins.map((b) => (
+                        <th key={b.key} className="px-2 py-2 font-normal">
+                          <BuiltinHeader boardId={boardId} k={b.key} label={b.label} canManage={canManage} />
+                        </th>
+                      ))}
+                      {columns.map((c, i) => (
+                        <th key={c.id} className="border-l border-line/60 px-2 py-2 font-normal">
+                          <ColumnHeader column={c} canManage={canManage} isFirst={i === 0} isLast={i === columns.length - 1} />
+                        </th>
+                      ))}
+                      <th className="px-1 py-1.5 text-center font-normal">
+                        <AddColumnButton boardId={boardId} hidden={hidden} canManage={canManage} />
+                      </th>
                     </tr>
                   </thead>
                   <tbody>
@@ -216,15 +249,29 @@ function TableView({ boardId, groups, tasks, people, canManage }: Props) {
                             )}
                           </Link>
                         </td>
-                        <td className="px-2 py-1.5">
-                          <AssigneePicker taskId={t.id} assignees={t.assignees} people={people} />
-                        </td>
-                        <td className="px-2 py-1.5"><StatusSelect taskId={t.id} status={t.status} /></td>
-                        <td className="px-2 py-1.5"><PrioritySelect taskId={t.id} priority={t.priority} /></td>
-                        <td className="px-2 py-1.5"><DateCell taskId={t.id} value={t.dueDate} done={t.status === "DONE"} /></td>
-                        <td className="px-2 py-1.5"><TimeCell task={t} /></td>
+                        {builtins.map((b) => (
+                          <td key={b.key} className="px-2 py-1.5">{builtinCell(b.key, t)}</td>
+                        ))}
+                        {columns.map((c) => (
+                          <td key={c.id} className="border-l border-line/60 px-1.5 py-1">
+                            <ColumnCell taskId={t.id} column={c} value={t.values[c.id] ?? null} people={people} />
+                          </td>
+                        ))}
+                        <td />
                       </tr>
                     ))}
+                    {hasSummary && rows.length > 0 && (
+                      <tr className="text-xs">
+                        <td />
+                        {builtins.map((b) => <td key={b.key} />)}
+                        {columns.map((c) => (
+                          <td key={c.id} className="border-l border-line/60 px-2 py-1.5">
+                            <ColumnSummary column={c} values={rows.map((t) => t.values[c.id] ?? null)} />
+                          </td>
+                        ))}
+                        <td />
+                      </tr>
+                    )}
                   </tbody>
                 </table>
                 <AddTaskRow boardId={boardId} groupId={g.id} />

@@ -1,4 +1,5 @@
 import type { Priority, TaskStatus } from "@prisma/client";
+import type { ColumnValue } from "@/lib/columns";
 
 export type Person = { id: string; name: string | null; email: string; image: string | null };
 
@@ -15,6 +16,8 @@ export type BoardTask = {
   subtaskDone: number;
   minutes: number;
   running: boolean;
+  /** Valores de columnas personalizadas por id de columna */
+  values: Record<string, ColumnValue>;
 };
 
 export type BoardGroup = { id: string; name: string; color: string };
