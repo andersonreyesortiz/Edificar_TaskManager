@@ -20,6 +20,10 @@ export type BoardTask = {
   mine: boolean;
   /** Valores de columnas personalizadas por id de columna */
   values: Record<string, ColumnValue>;
+  /** Subtareas (solo en tareas principales) */
+  subtasks?: BoardTask[];
+  /** Tarea principal (solo en subtareas) */
+  parentId?: string | null;
 };
 
 export type BoardGroup = { id: string; name: string; color: string };

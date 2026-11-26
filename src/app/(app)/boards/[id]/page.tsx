@@ -39,7 +39,11 @@ export default async function BoardPage({
       orderBy: [{ position: "asc" }, { createdAt: "asc" }],
       include: { assignees: { include: { user: { select: personSelect } } }, values: { select: { columnId: true, value: true } } },
     }),
-    prisma.task.findMany({ where: { boardId: id, parentId: { not: null } }, select: { id: true, parentId: true, status: true } }),
+    prisma.task.findMany({
+      where: { boardId: id, parentId: { not: null } },
+      orderBy: [{ position: "asc" }, { createdAt: "asc" }],
+      include: { assignees: { include: { user: { select: personSelect } } }, values: { select: { columnId: true, value: true } } },
+    }),
     prisma.timeEntry.groupBy({ by: ["taskId"], where: { task: { boardId: id } }, _sum: { minutes: true } }),
     prisma.timeEntry.findMany({ where: { userId: user.id, endedAt: null }, select: { taskId: true } }),
     prisma.user.findMany({ where: { active: true }, select: personSelect, orderBy: { name: "asc" } }),
@@ -48,9 +52,30 @@ export default async function BoardPage({
   const minutesOf = new Map(timeByTask.map((t) => [t.taskId, t._sum.minutes ?? 0]));
   const runningIds = new Set(running.map((r) => r.taskId));
 
+  const toSubtask = (s: (typeof subtasks)[number], parentMine: boolean): BoardTask => ({
+    id: s.id,
+    title: s.title,
+    status: s.status,
+    priority: s.priority,
+    dueDate: s.dueDate,
+    groupId: s.groupId,
+    estimateMinutes: s.estimateMinutes,
+    assignees: s.assignees.map((a) => a.user),
+    subtaskCount: 0,
+    subtaskDone: 0,
+    minutes: minutesOf.get(s.id) ?? 0,
+    running: runningIds.has(s.id),
+    // Quien es responsable de la tarea principal también puede avanzar sus subtareas.
+    mine: parentMine || s.assignees.some((a) => a.userId === user.id),
+    values: Object.fromEntries(s.values.map((v) => [v.columnId, v.value as ColumnValue])),
+    parentId: s.parentId,
+  });
+
   const tasks: BoardTask[] = rawTasks.map((t) => {
     const subs = subtasks.filter((s) => s.parentId === t.id);
+    const mine = t.assignees.some((a) => a.userId === user.id);
     return {
+      subtasks: subs.map((s) => toSubtask(s, mine)),
       id: t.id,
       title: t.title,
       status: t.status,

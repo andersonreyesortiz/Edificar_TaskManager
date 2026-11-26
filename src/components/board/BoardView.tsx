@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { ChevronDown, ChevronRight, ListTree, Pause, Play, Plus, Search, Trash2 } from "lucide-react";
 import type { TaskStatus } from "@prisma/client";
 import { STATUSES, formatMinutes } from "@/lib/constants";
@@ -167,6 +167,34 @@ function AddTaskRow({ boardId, groupId }: { boardId: string; groupId: string }) 
         disabled={pending}
         placeholder="Agregar tarea"
         className="w-full bg-transparent py-1 text-sm outline-none placeholder:text-muted"
+      />
+    </form>
+  );
+}
+
+function AddSubtaskRow({ boardId, parentId }: { boardId: string; parentId: string }) {
+  const [title, setTitle] = useState("");
+  const [pending, start] = useTransition();
+  return (
+    <form
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (!title.trim()) return;
+        const t = title;
+        setTitle("");
+        start(async () => {
+          await createTask({ boardId, parentId, title: t });
+        });
+      }}
+      className="flex items-center gap-2 py-1"
+    >
+      <Plus size={13} className="text-muted" />
+      <input
+        value={title}
+        onChange={(e) => setTitle(e.target.value)}
+        disabled={pending}
+        placeholder="Agregar subtarea"
+        className="w-full bg-transparent py-1 text-[13px] outline-none placeholder:text-muted"
       />
     </form>
   );
@@ -343,6 +371,73 @@ function TableView({
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const href = useOpenTask();
   const [newGroup, setNewGroup] = useState("");
+
+  // Subtareas expandidas (se recuerda por tablero en este navegador).
+  const expandKey = `ritmo:expanded:${boardId}`;
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+  useEffect(() => {
+    try {
+      setExpanded(JSON.parse(localStorage.getItem(expandKey) ?? "{}"));
+    } catch {}
+  }, [expandKey]);
+  const saveExpanded = (next: Record<string, boolean>) => {
+    setExpanded(next);
+    try {
+      localStorage.setItem(expandKey, JSON.stringify(next));
+    } catch {}
+  };
+  const toggleTask = (id: string) => saveExpanded({ ...expanded, [id]: !expanded[id] });
+  const withSubs = tasks.filter((t) => (t.subtasks?.length ?? 0) > 0);
+  const allOpen = withSubs.length > 0 && withSubs.every((t) => expanded[t.id]);
+  const toggleAll = () => saveExpanded(allOpen ? {} : Object.fromEntries(withSubs.map((t) => [t.id, true])));
+
+  const renderRow = (t: BoardTask, sub: boolean, open: boolean) => (
+    <tr key={t.id} className={`border-b border-line/70 ${sub ? "bg-canvas/40 hover:bg-canvas" : "hover:bg-canvas/60"}`}>
+      <td className={`py-1.5 pr-3 ${sub ? "pl-9" : "pl-1.5"}`}>
+        <div className="flex items-center gap-1">
+          {sub ? (
+            <span className="mr-1 h-3 w-3 shrink-0 rounded-bl border-b border-l border-line" aria-hidden />
+          ) : (
+            <button
+              type="button"
+              onClick={() => toggleTask(t.id)}
+              className={`flex h-6 w-6 shrink-0 items-center justify-center rounded text-muted hover:bg-black/5 hover:text-ink ${t.subtaskCount === 0 && !canEdit ? "invisible" : ""}`}
+              title={open ? "Ocultar subtareas" : t.subtaskCount ? "Ver subtareas" : "Agregar subtarea"}
+              aria-expanded={open}
+            >
+              {open ? <ChevronDown size={14} /> : <ChevronRight size={14} className={t.subtaskCount ? "" : "opacity-40"} />}
+            </button>
+          )}
+          <Link href={href(t.id)} scroll={false} className="flex min-w-0 items-center gap-2 hover:text-brand-700">
+            <span className={`min-w-0 truncate ${t.status === "DONE" ? "text-muted line-through" : sub ? "" : "font-medium"}`}>{t.title}</span>
+            {!sub && t.subtaskCount > 0 && (
+              <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-canvas px-1.5 py-0.5 text-[11px] text-muted">
+                <ListTree size={11} /> {t.subtaskDone}/{t.subtaskCount}
+              </span>
+            )}
+          </Link>
+        </div>
+      </td>
+      {items.map((it) =>
+        it.builtin ? (
+          <td key={it.key} className="overflow-hidden px-2 py-1.5">
+            {it.builtin.key === "status" || it.builtin.key === "time" ? (
+              builtinCell(it.builtin.key, t)
+            ) : (
+              <ReadOnly on={!canEdit}>{builtinCell(it.builtin.key, t)}</ReadOnly>
+            )}
+          </td>
+        ) : (
+          <td key={it.key} className="border-l border-line/60 px-1.5 py-1">
+            <ReadOnly on={!canEdit}>
+              <ColumnCell taskId={t.id} column={it.column!} value={t.values[it.key] ?? null} people={people} />
+            </ReadOnly>
+          </td>
+        ),
+      )}
+      <td />
+    </tr>
+  );
   const [, start] = useTransition();
 
   return (
@@ -372,8 +467,22 @@ function TableView({
                   </colgroup>
                   <thead>
                     <tr className="border-b border-line text-left text-xs text-muted">
-                      <th className="relative px-3 py-2 font-medium">
-                        Tarea
+                      <th className="relative py-2 pl-1.5 pr-3 font-medium">
+                        <span className="flex items-center gap-1">
+                          {withSubs.length > 0 ? (
+                            <button
+                              type="button"
+                              onClick={toggleAll}
+                              className="flex h-6 w-6 items-center justify-center rounded hover:bg-black/5 hover:text-ink"
+                              title={allOpen ? "Ocultar todas las subtareas" : "Ver todas las subtareas"}
+                            >
+                              {allOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                            </button>
+                          ) : (
+                            <span className="w-6" />
+                          )}
+                          Tarea
+                        </span>
                         <ResizeHandle k="title" w={widthOf("title")} />
                       </th>
                       {items.map((it) => (
@@ -428,38 +537,23 @@ function TableView({
                     </tr>
                   </thead>
                   <tbody>
-                    {rows.map((t) => (
-                      <tr key={t.id} className="border-b border-line/70 hover:bg-canvas/60">
-                        <td className="px-3 py-1.5">
-                          <Link href={href(t.id)} scroll={false} className="flex items-center gap-2 hover:text-brand-700">
-                            <span className={`min-w-0 ${t.status === "DONE" ? "text-muted line-through" : "font-medium"}`}>{t.title}</span>
-                            {t.subtaskCount > 0 && (
-                              <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-canvas px-1.5 py-0.5 text-[11px] text-muted">
-                                <ListTree size={11} /> {t.subtaskDone}/{t.subtaskCount}
-                              </span>
-                            )}
-                          </Link>
-                        </td>
-                        {items.map((it) =>
-                          it.builtin ? (
-                            <td key={it.key} className="overflow-hidden px-2 py-1.5">
-                              {it.builtin.key === "status" || it.builtin.key === "time" ? (
-                                builtinCell(it.builtin.key, t)
-                              ) : (
-                                <ReadOnly on={!canEdit}>{builtinCell(it.builtin.key, t)}</ReadOnly>
-                              )}
-                            </td>
-                          ) : (
-                            <td key={it.key} className="border-l border-line/60 px-1.5 py-1">
-                              <ReadOnly on={!canEdit}>
-                                <ColumnCell taskId={t.id} column={it.column!} value={t.values[it.key] ?? null} people={people} />
-                              </ReadOnly>
-                            </td>
-                          ),
-                        )}
-                        <td />
-                      </tr>
-                    ))}
+                    {rows.map((t) => {
+                      const open = !!expanded[t.id];
+                      const subs = t.subtasks ?? [];
+                      return (
+                        <Fragment key={t.id}>
+                          {renderRow(t, false, open)}
+                          {open && subs.map((st) => renderRow(st, true, false))}
+                          {open && canEdit && (
+                            <tr className="border-b border-line/70 bg-canvas/40">
+                              <td colSpan={items.length + 2} className="py-0 pl-9">
+                                <AddSubtaskRow boardId={boardId} parentId={t.id} />
+                              </td>
+                            </tr>
+                          )}
+                        </Fragment>
+                      );
+                    })}
                     {hasSummary && rows.length > 0 && (
                       <tr className="text-xs">
                         <td />
