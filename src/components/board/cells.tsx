@@ -155,7 +155,7 @@ export function AssigneePicker({ taskId, assignees, people }: { taskId: string; 
       )}
     >
       {() => (
-        <div className="max-h-64 overflow-y-auto">
+        <div>
           <p className="px-2 py-1 text-xs text-muted">Responsables</p>
           {people.map((p) => (
             <button
@@ -164,7 +164,10 @@ export function AssigneePicker({ taskId, assignees, people }: { taskId: string; 
               className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-canvas"
             >
               <Avatar name={p.name} email={p.email} image={p.image} size={22} />
-              <span className="min-w-0 flex-1 truncate">{p.name ?? p.email}</span>
+              <span className="min-w-0 flex-1">
+                <span className="block truncate">{p.name ?? p.email}</span>
+                {p.name && <span className="block truncate text-[11px] text-muted">{p.email}</span>}
+              </span>
               {value.includes(p.id) && <Check size={14} className="text-brand-700" />}
             </button>
           ))}
