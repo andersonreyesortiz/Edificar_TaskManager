@@ -68,6 +68,19 @@ export async function createBoard(formData: FormData) {
   if (user.role === "GUEST") throw new Error("Los invitados no pueden crear tableros.");
   const name = str(formData.get("name")) || "Nuevo tablero";
   const description = str(formData.get("description")) || null;
+  let cols: { name: string; type: ColumnType }[] = [];
+  try {
+    const raw = JSON.parse(str(formData.get("columns")) || "[]");
+    if (Array.isArray(raw)) {
+      cols = raw
+        .filter((c) => c && COLUMN_TYPES.some((t) => t.value === c.type))
+        .slice(0, 30)
+        .map((c) => ({ name: String(c.name ?? "").trim().slice(0, 60) || columnTypeLabel(c.type), type: c.type as ColumnType }));
+    }
+  } catch {
+    cols = [];
+  }
+  const hidden = formData.getAll("hide").map(String).filter((k) => BUILTIN_COLUMNS.some((b) => b.key === k));
   const count = await prisma.board.count();
   const board = await prisma.board.create({
     data: {
@@ -75,7 +88,11 @@ export async function createBoard(formData: FormData) {
       description,
       color: BOARD_COLORS[count % BOARD_COLORS.length],
       ownerId: user.id,
+      hiddenColumns: hidden,
       members: { create: { userId: user.id } },
+      columns: {
+        create: cols.map((c, position) => ({ name: c.name, type: c.type, position, settings: defaultSettings(c.type) as Prisma.InputJsonValue })),
+      },
       groups: {
         create: [
           { name: "Pendientes", color: "#6366f1", position: 0 },

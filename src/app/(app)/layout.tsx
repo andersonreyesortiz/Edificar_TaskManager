@@ -8,6 +8,7 @@ import { RunningTimer } from "@/components/RunningTimer";
 import { NotificationBell } from "@/components/NotificationBell";
 import { NewBoardButton } from "@/components/NewBoardButton";
 import { NavLink } from "@/components/NavLink";
+import { UserMenu } from "@/components/UserMenu";
 import { doSignOut } from "@/lib/actions";
 import { fmtDateTime, roleMeta } from "@/lib/constants";
 
@@ -56,10 +57,10 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           <Avatar name={user.name} email={user.email} image={user.image} size={32} />
           <div className="min-w-0 flex-1">
             <p className="truncate text-sm font-medium">{user.name ?? user.email}</p>
-            <p className="text-xs text-muted">{roleMeta(user.role).label}</p>
+            <p className="truncate text-xs text-muted" title={user.email}>{user.email}</p>
           </div>
           <form action={doSignOut}>
-            <button className="rounded-md px-2 py-1 text-xs text-muted hover:bg-black/5" title="Cerrar sesión">Salir</button>
+            <button className="rounded-md px-2 py-1 text-xs font-medium text-muted hover:bg-red-50 hover:text-red-600" title="Cerrar sesión">Cerrar sesión</button>
           </form>
         </div>
       </aside>
@@ -94,6 +95,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
                 actor: n.actor,
               }))}
             />
+            <UserMenu name={user.name} email={user.email} image={user.image} role={roleMeta(user.role).label} />
           </div>
         </header>
         <main className="min-w-0 flex-1">{children}</main>

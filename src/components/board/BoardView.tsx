@@ -10,6 +10,7 @@ import { createGroup, createTask, deleteGroup, renameGroup, startTimer, stopTime
 import { AssigneePicker, AvatarStack, DateCell, PriorityFlag, PrioritySelect, StatusSelect } from "./cells";
 import type { BoardGroup, BoardTask, Person } from "./types";
 import { BUILTIN_COLUMNS, type BoardColumnDef, type BuiltinKey } from "@/lib/columns";
+import { FilterButton, matchesFilters, searchableText, type Filters } from "./filters";
 import { AddColumnButton, BuiltinHeader, ColumnCell, ColumnHeader, ColumnSummary } from "./columns";
 
 type Props = {
@@ -28,16 +29,18 @@ export function BoardView(props: Props) {
   const [query, setQuery] = useState("");
   const [onlyMine, setOnlyMine] = useState(false);
   const [status, setStatus] = useState<TaskStatus | "">("");
+  const [filters, setFilters] = useState<Filters>({});
 
   const tasks = useMemo(
     () =>
       props.tasks.filter(
         (t) =>
-          (!query || t.title.toLowerCase().includes(query.toLowerCase())) &&
+          (!query || searchableText(t, props.columns).includes(query.toLowerCase())) &&
           (!onlyMine || t.assignees.some((a) => a.id === props.meId)) &&
-          (!status || t.status === status),
+          (!status || t.status === status) &&
+          matchesFilters(t, filters, props.columns),
       ),
-    [props.tasks, query, onlyMine, status, props.meId],
+    [props.tasks, query, onlyMine, status, props.meId, filters, props.columns],
   );
 
   return (
@@ -57,6 +60,7 @@ export function BoardView(props: Props) {
           <input type="checkbox" checked={onlyMine} onChange={(e) => setOnlyMine(e.target.checked)} className="accent-brand-700" />
           Solo mis tareas
         </label>
+        <FilterButton columns={props.columns} people={props.people} filters={filters} onChange={setFilters} />
       </div>
       {props.view === "table" ? <TableView {...props} tasks={tasks} /> : <KanbanView {...props} tasks={tasks} />}
     </div>

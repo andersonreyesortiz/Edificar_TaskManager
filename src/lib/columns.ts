@@ -93,3 +93,41 @@ export function valueToText(col: BoardColumnDef, v: ColumnValue, people: { id: s
       return String(v);
   }
 }
+
+/** Plantillas para crear un tablero con columnas ya listas. */
+export const BOARD_TEMPLATES: { id: string; name: string; description: string; columns: { name: string; type: ColumnType }[] }[] = [
+  { id: "blank", name: "En blanco", description: "Solo las columnas básicas", columns: [] },
+  {
+    id: "obra",
+    name: "Proyecto de diseño u obra",
+    description: "Fase, disciplina, costo y enlace al plano",
+    columns: [
+      { name: "Fase", type: "STATUS" },
+      { name: "Disciplina", type: "DROPDOWN" },
+      { name: "Costo estimado", type: "NUMBER" },
+      { name: "Plano o archivo", type: "LINK" },
+    ],
+  },
+  {
+    id: "licitacion",
+    name: "Licitación o propuesta",
+    description: "Cliente, monto, fecha de entrega y aprobación",
+    columns: [
+      { name: "Cliente", type: "TEXT" },
+      { name: "Monto", type: "NUMBER" },
+      { name: "Entrega al cliente", type: "DATE" },
+      { name: "Aprobado", type: "CHECKBOX" },
+    ],
+  },
+  {
+    id: "seguimiento",
+    name: "Seguimiento con terceros",
+    description: "Contacto, correo, teléfono y calificación",
+    columns: [
+      { name: "Contacto", type: "TEXT" },
+      { name: "Correo", type: "EMAIL" },
+      { name: "Teléfono", type: "PHONE" },
+      { name: "Calificación", type: "RATING" },
+    ],
+  },
+];

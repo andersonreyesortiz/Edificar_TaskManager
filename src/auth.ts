@@ -47,7 +47,11 @@ async function applyInvitation(userId: string, email: string, isNewUser: boolean
 const providers: NextAuthConfig["providers"] = [];
 
 if (process.env.AUTH_GOOGLE_ID && process.env.AUTH_GOOGLE_SECRET) {
-  providers.push(Google({ allowDangerousEmailAccountLinking: true }));
+  providers.push(Google({
+      allowDangerousEmailAccountLinking: true,
+      // Siempre deja elegir la cuenta de Google, para poder cambiar de usuario.
+      authorization: { params: { prompt: "select_account" } },
+    }));
 }
 
 if (process.env.AUTH_RESEND_KEY) {
