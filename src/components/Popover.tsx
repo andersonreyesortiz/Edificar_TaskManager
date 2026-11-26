@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 
 /**
- * Menú flotante. Usa posición fija para que no lo recorten contenedores con scroll
- * (por ejemplo la tabla del tablero).
+ * Menú flotante. Se dibuja en <body> con posición fija para que no lo recorten ni lo
+ * desplacen contenedores con scroll o con efectos (la tabla del tablero, la barra superior).
  */
 export function Popover({
   trigger,
@@ -23,11 +24,13 @@ export function Popover({
   const [pos, setPos] = useState<{ top: number; left: number; maxHeight: number } | null>(null);
   const ref = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLDivElement>(null);
+  // Marca los clics hechos dentro del menú (incluidos menús anidados, que React propaga por el portal).
+  const insideRef = useRef(false);
 
   const place = () => {
     const r = triggerRef.current?.getBoundingClientRect();
     if (!r) return;
-    const vw = window.innerWidth;
+    const vw = document.documentElement.clientWidth;
     const vh = window.innerHeight;
     let left = align === "right" ? r.right - width : r.left;
     left = Math.max(8, Math.min(left, vw - width - 8));
@@ -49,8 +52,11 @@ export function Popover({
 
   useEffect(() => {
     if (!open) return;
+    insideRef.current = false;
     const onDown = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+      const inside = insideRef.current || (ref.current?.contains(e.target as Node) ?? false);
+      insideRef.current = false;
+      if (!inside) setOpen(false);
     };
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
     const onMove = () => place();
@@ -68,16 +74,19 @@ export function Popover({
   }, [open]);
 
   return (
-    <div ref={ref} className={className}>
+    <div ref={ref} className={className} onMouseDown={() => (insideRef.current = true)}>
       <div ref={triggerRef} onClick={() => setOpen((o) => !o)}>{trigger(open)}</div>
-      {open && pos && (
-        <div
-          className="fixed z-50 overflow-y-auto rounded-lg border border-line bg-white p-1 shadow-lg"
-          style={{ width, top: pos.top, left: pos.left, maxHeight: pos.maxHeight }}
-        >
-          {children(() => setOpen(false))}
-        </div>
-      )}
+      {open &&
+        pos &&
+        createPortal(
+          <div
+            className="fixed z-[70] overflow-y-auto rounded-lg border border-line bg-white p-1 text-left shadow-lg"
+            style={{ width, top: pos.top, left: pos.left, maxHeight: pos.maxHeight }}
+          >
+            {children(() => setOpen(false))}
+          </div>,
+          document.body,
+        )}
     </div>
   );
 }
