@@ -26,7 +26,17 @@ export function Avatar({
   const label = name || email || "";
   if (image) {
     // eslint-disable-next-line @next/next/no-img-element
-    return <img src={image} alt={label} title={label} width={size} height={size} className="rounded-full ring-2 ring-white" />;
+    return <img
+        src={image}
+        alt={label}
+        title={label}
+        width={size}
+        height={size}
+        referrerPolicy="no-referrer"
+        // Tamaño fijo y recorte para que la foto no se estire dentro de filas flexibles.
+        style={{ width: size, height: size, minWidth: size }}
+        className="shrink-0 rounded-full object-cover ring-2 ring-white"
+      />;
   }
   return (
     <span
