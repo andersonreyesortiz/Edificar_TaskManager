@@ -124,8 +124,7 @@ export async function archiveBoard(boardId: string) {
 }
 
 export async function addBoardMember(boardId: string, userId: string, role: BoardRole = "COLLABORATOR") {
-  const user = await requireUser();
-  if (!(await canManageBoard(user, boardId))) throw new Error("Solo el dueño del tablero puede agregar miembros.");
+  const user = await requireAdmin();
   if (role !== "EDITOR" && role !== "COLLABORATOR") throw new Error("Permiso no válido.");
   const member = await prisma.user.findUniqueOrThrow({ where: { id: userId } });
   await prisma.boardMember.upsert({
@@ -145,8 +144,7 @@ export async function addBoardMember(boardId: string, userId: string, role: Boar
 }
 
 export async function setBoardMemberRole(boardId: string, userId: string, role: BoardRole) {
-  const user = await requireUser();
-  if (!(await canManageBoard(user, boardId))) throw new Error("Solo el dueño del tablero puede cambiar permisos.");
+  const user = await requireAdmin();
   if (role !== "EDITOR" && role !== "COLLABORATOR") throw new Error("Permiso no válido.");
   const m = await prisma.boardMember.update({ where: { boardId_userId: { boardId, userId } }, data: { role }, include: { user: true } });
   await log(user, "board.member_role", `cambió el permiso de ${m.user.name ?? m.user.email} a ${role === "EDITOR" ? "Editor" : "Colaborador"}`, { boardId });
@@ -181,8 +179,7 @@ async function placeInStatusGroup(boardId: string, t: { id: string; status: Task
 }
 
 export async function removeBoardMember(boardId: string, userId: string) {
-  const user = await requireUser();
-  if (!(await canManageBoard(user, boardId))) throw new Error("Solo el dueño del tablero puede quitar miembros.");
+  const user = await requireAdmin();
   const member = await prisma.user.findUniqueOrThrow({ where: { id: userId } });
   await prisma.boardMember.deleteMany({ where: { boardId, userId } });
   await log(user, "board.member_removed", `quitó a ${member.name ?? member.email} del tablero`, { boardId });
@@ -499,6 +496,12 @@ export async function setTaskAssignees(taskId: string, userIds: string[]) {
   const added = userIds.filter((id) => !beforeIds.has(id));
   const removed = [...beforeIds].filter((id) => !afterIds.has(id));
   if (!added.length && !removed.length) return;
+  if (added.length && user.role !== "ADMIN") {
+    // Solo los administradores pueden sumar gente nueva al tablero; los demás asignan entre los miembros.
+    const board = await prisma.board.findUniqueOrThrow({ where: { id: t.boardId }, select: { ownerId: true, members: { select: { userId: true } } } });
+    const allowed = new Set([board.ownerId, ...board.members.map((m) => m.userId)]);
+    if (added.some((id) => !allowed.has(id))) throw new Error("Solo puedes asignar a miembros del tablero. Pide a un administrador que agregue a la persona.");
+  }
 
   await prisma.$transaction([
     prisma.taskAssignee.deleteMany({ where: { taskId, userId: { in: removed } } }),
@@ -646,13 +649,11 @@ export async function deleteTimeEntry(entryId: string) {
 // ---------- equipo e invitaciones ----------
 
 export async function inviteUser(formData: FormData) {
-  const admin = await requireUser();
-  if (admin.role === "GUEST") throw new Error("Los invitados no pueden invitar a otras personas.");
+  const admin = await requireAdmin();
   const email = str(formData.get("email")).toLowerCase();
   const role = (str(formData.get("role")) || "GUEST") as Role;
   const boardId = str(formData.get("boardId")) || null;
   if (!z.string().email().safeParse(email).success) throw new Error("Correo no válido.");
-  if (role === "ADMIN" && admin.role !== "ADMIN") throw new Error("Solo un administrador puede invitar administradores.");
   if (boardId) await assertBoardAccess(admin, boardId);
 
   const existing = await prisma.user.findUnique({ where: { email } });

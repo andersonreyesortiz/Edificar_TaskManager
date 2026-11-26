@@ -86,6 +86,7 @@ export default async function BoardPage({
         board={{ id: board.id, name: board.name, description: board.description, color: board.color, ownerId: board.ownerId, autoGroupByStatus: board.autoGroupByStatus }}
         members={people}
         memberRoles={memberRoles}
+        isAdmin={user.role === "ADMIN"}
         allUsers={allUsers}
         canManage={canManage}
         view={currentView}

@@ -28,7 +28,7 @@ export default async function TeamPage({ searchParams }: { searchParams: Promise
         {domains.length > 0 ? (
           <>Cualquier persona con correo <b>@{domains.join(", @")}</b> puede entrar con Google. </>
         ) : null}
-        Para alguien de otra empresa, envíale una invitación.
+        {isAdmin ? "Para alguien de otra empresa, envíale una invitación." : "Solo los administradores pueden invitar personas o agregarlas a tableros."}
       </p>
 
       <section className="card mt-6 p-4">
@@ -36,7 +36,7 @@ export default async function TeamPage({ searchParams }: { searchParams: Promise
         <ProfileName name={me.name ?? ""} email={me.email} />
       </section>
 
-      {me.role !== "GUEST" && (
+      {isAdmin && (
         <section className="card mt-6 p-4">
           <h2 className="font-semibold">Invitar a una persona</h2>
           <p className="mt-1 text-sm text-muted">Funciona con cualquier correo: Gmail, Outlook o el de otra empresa.</p>

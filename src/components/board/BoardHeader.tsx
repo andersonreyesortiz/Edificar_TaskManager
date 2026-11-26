@@ -16,6 +16,7 @@ export function BoardHeader({
   board,
   members,
   memberRoles,
+  isAdmin,
   allUsers,
   canManage,
   view,
@@ -24,6 +25,8 @@ export function BoardHeader({
   board: { id: string; name: string; description: string | null; color: string; ownerId: string; autoGroupByStatus: boolean };
   members: Person[];
   memberRoles: Record<string, BoardRole>;
+  /** Solo los administradores agregan, quitan o cambian permisos de miembros */
+  isAdmin: boolean;
   allUsers: Person[];
   canManage: boolean;
   view: "table" | "kanban";
@@ -109,7 +112,7 @@ export function BoardHeader({
                     <span className="min-w-0 flex-1 truncate">{m.name ?? m.email}</span>
                     {m.id === board.ownerId ? (
                       <span className="text-[11px] text-muted">Dueño</span>
-                    ) : canManage ? (
+                    ) : isAdmin ? (
                       <>
                         <select
                           value={memberRoles[m.id] ?? "COLLABORATOR"}
@@ -129,7 +132,7 @@ export function BoardHeader({
                     )}
                   </div>
                 ))}
-                {canManage && (
+                {isAdmin && (
                   <>
                     <div className="my-1 border-t border-line" />
                     <p className="flex items-center gap-1 px-2 py-1 text-xs font-medium text-muted"><UserPlus size={12} /> Agregar persona</p>
