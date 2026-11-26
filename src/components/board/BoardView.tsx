@@ -10,6 +10,7 @@ import { createGroup, createTask, setColumnLayout, deleteGroup, renameGroup, sta
 import { AssigneePicker, AvatarStack, DateCell, PriorityFlag, PrioritySelect, StatusSelect } from "./cells";
 import type { BoardGroup, BoardTask, Person } from "./types";
 import { ReadOnly } from "@/components/ReadOnly";
+import { Modal } from "@/components/Modal";
 import { BUILTIN_COLUMNS, type BoardColumnDef, type BuiltinKey } from "@/lib/columns";
 import { FilterButton, matchesFilters, searchableText, type Filters } from "./filters";
 import { AddColumnButton, BuiltinHeader, ColumnCell, ColumnHeader, ColumnSummary } from "./columns";
@@ -200,16 +201,17 @@ function AddSubtaskRow({ boardId, parentId }: { boardId: string; parentId: strin
   );
 }
 
-function GroupHeader({ group, count, minutes, collapsed, onToggle, canManage, canEdit }: {
+function GroupHeader({ group, count, minutes, collapsed, onToggle, canEdit, otherGroups }: {
   group: BoardGroup;
   count: number;
   minutes: number;
   collapsed: boolean;
   onToggle: () => void;
-  canManage: boolean;
   canEdit: boolean;
+  otherGroups: BoardGroup[];
 }) {
   const [, start] = useTransition();
+  const [deleting, setDeleting] = useState(false);
   return (
     <div className="group/g flex items-center gap-2 px-1 py-2">
       <button onClick={onToggle} className="rounded p-0.5 hover:bg-black/5" style={{ color: group.color }}>
@@ -226,16 +228,71 @@ function GroupHeader({ group, count, minutes, collapsed, onToggle, canManage, ca
         {count} {count === 1 ? "tarea" : "tareas"}
         {minutes ? ` · ${formatMinutes(minutes)}` : ""}
       </span>
-      {canManage && (
+      {canEdit && (
         <button
-          onClick={() => confirm(`¿Borrar el grupo «${group.name}» y todas sus tareas?`) && start(() => deleteGroup(group.id))}
-          className="ml-auto rounded p-1 text-muted opacity-0 hover:bg-red-50 hover:text-red-600 group-hover/g:opacity-100"
-          title="Borrar grupo"
+          onClick={() => setDeleting(true)}
+          className="ml-auto inline-flex items-center gap-1 rounded px-1.5 py-1 text-xs text-muted opacity-60 hover:bg-red-50 hover:text-red-600 hover:opacity-100 group-hover/g:opacity-100"
+          title="Eliminar grupo"
         >
-          <Trash2 size={14} />
+          <Trash2 size={14} /> <span className="hidden sm:inline">Eliminar grupo</span>
         </button>
       )}
+      {deleting && <DeleteGroupDialog group={group} count={count} otherGroups={otherGroups} onClose={() => setDeleting(false)} />}
     </div>
+  );
+}
+
+function DeleteGroupDialog({ group, count, otherGroups, onClose }: { group: BoardGroup; count: number; otherGroups: BoardGroup[]; onClose: () => void }) {
+  const [mode, setMode] = useState<"move" | "delete">("move");
+  const [target, setTarget] = useState(otherGroups[0]?.id ?? "");
+  const [error, setError] = useState("");
+  const [pending, start] = useTransition();
+  const submit = () =>
+    start(async () => {
+      try {
+        await deleteGroup(group.id, { moveTo: count && mode === "move" ? target : null });
+        onClose();
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "No se pudo eliminar el grupo.");
+      }
+    });
+  return (
+    <Modal open onClose={onClose} title={`Eliminar el grupo «${group.name}»`}>
+      {otherGroups.length === 0 ? (
+        <p className="text-sm text-muted">Es el único grupo del tablero. Crea otro grupo antes de eliminar este.</p>
+      ) : count === 0 ? (
+        <p className="text-sm text-muted">El grupo está vacío. Se eliminará y quedará registrado en el historial.</p>
+      ) : (
+        <div className="space-y-3 text-sm">
+          <p className="text-muted">Este grupo tiene {count} {count === 1 ? "tarea" : "tareas"}. ¿Qué hacemos con {count === 1 ? "ella" : "ellas"}?</p>
+          <label className="flex items-start gap-2 rounded-lg border border-line p-3 has-[:checked]:border-[#00A0E3] has-[:checked]:bg-[#00A0E3]/5">
+            <input type="radio" name="mode" checked={mode === "move"} onChange={() => setMode("move")} className="mt-1" />
+            <span className="flex-1">
+              Moverlas a otro grupo
+              <select value={target} onChange={(e) => setTarget(e.target.value)} onFocus={() => setMode("move")} className="input mt-2 w-full">
+                {otherGroups.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
+              </select>
+            </span>
+          </label>
+          <label className="flex items-start gap-2 rounded-lg border border-line p-3 has-[:checked]:border-red-400 has-[:checked]:bg-red-50">
+            <input type="radio" name="mode" checked={mode === "delete"} onChange={() => setMode("delete")} className="mt-1" />
+            <span>
+              Eliminarlas junto con el grupo
+              <span className="block text-xs text-muted">También se borran sus subtareas, comentarios y tiempos. El historial deja constancia.</span>
+            </span>
+          </label>
+        </div>
+      )}
+      {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
+      <div className="mt-5 flex justify-end gap-2">
+        <button onClick={onClose} className="btn-outline">Cancelar</button>
+        {otherGroups.length > 0 && (
+          <button onClick={submit} disabled={pending} className="inline-flex items-center gap-1.5 rounded-lg bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50">
+            <Trash2 size={14} /> {pending ? "Eliminando…" : "Eliminar grupo"}
+          </button>
+        )}
+      </div>
+    </Modal>
   );
 }
 
@@ -454,8 +511,8 @@ function TableView({
               minutes={minutes}
               collapsed={!!collapsed[g.id]}
               onToggle={() => setCollapsed((c) => ({ ...c, [g.id]: !c[g.id] }))}
-              canManage={canManage && !byStatus}
               canEdit={canEdit && !byStatus}
+              otherGroups={boardGroups.filter((x) => x.id !== g.id)}
             />
             {!collapsed[g.id] && (
               <div className="card overflow-x-auto" style={{ borderLeft: `4px solid ${g.color}` }}>

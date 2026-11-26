@@ -2,11 +2,11 @@
 
 import Link from "next/link";
 import { useState, useTransition } from "react";
-import { Archive, Columns3, Layers, Rows3, UserPlus, X } from "lucide-react";
+import { Archive, Columns3, Rows3, UserPlus, X } from "lucide-react";
 import type { BoardRole } from "@prisma/client";
 import clsx from "clsx";
 import { BOARD_COLORS, formatMinutes } from "@/lib/constants";
-import { addBoardMember, archiveBoard, removeBoardMember, setAutoGroupByStatus, setBoardMemberRole, updateBoard } from "@/lib/actions";
+import { addBoardMember, archiveBoard, removeBoardMember, setBoardMemberRole, updateBoard } from "@/lib/actions";
 import { Popover } from "@/components/Popover";
 import { ExportMenu } from "@/components/ExportMenu";
 import { Avatar } from "@/components/Avatar";
@@ -168,19 +168,6 @@ export function BoardHeader({
               </div>
             )}
           </Popover>
-          {canManage && (
-            <button
-              onClick={() => {
-                const on = !board.autoGroupByStatus;
-                if (on && !confirm("Las tareas se moverán al grupo de su estado (Por hacer, En curso, Terminada…). Los grupos que falten se crearán. ¿Continuar?")) return;
-                start(() => setAutoGroupByStatus(board.id, on));
-              }}
-              className={clsx("btn-outline", board.autoGroupByStatus && "border-brand-500 bg-brand-50 text-brand-900")}
-              title="Cuando una tarea cambia de estado, se mueve sola al grupo con el nombre de ese estado (por ejemplo «Terminada»). Si el grupo no existe, se crea."
-            >
-              <Layers size={15} /> <span className="hidden sm:inline">Agrupar por estado</span>{board.autoGroupByStatus ? " ✓" : ""}
-            </button>
-          )}
           {canManage && (
             <button
               onClick={() => confirm("¿Archivar este tablero? Dejará de aparecer para todos.") && start(() => archiveBoard(board.id))}

@@ -117,10 +117,7 @@ export async function createBoard(formData: FormData) {
         create: cols.map((c, position) => ({ name: c.name, type: c.type, position, settings: defaultSettings(c.type) as Prisma.InputJsonValue })),
       },
       groups: {
-        create: [
-          { name: "Pendientes", color: "#6366f1", position: 0 },
-          { name: "Esta semana", color: "#0ea5e9", position: 1 },
-        ],
+        create: [{ name: "Grupo1", color: "#00A0E3", position: 0 }],
       },
     },
   });
@@ -231,12 +228,34 @@ export async function renameGroup(groupId: string, name: string) {
   refresh(g.boardId);
 }
 
-export async function deleteGroup(groupId: string) {
+/**
+ * Borra un grupo (dueño, editores y administradores). Si se indica `moveTo`, sus tareas pasan a ese grupo;
+ * si no, se borran con el grupo. Siempre debe quedar al menos un grupo en el tablero.
+ */
+export async function deleteGroup(groupId: string, opts: { moveTo?: string | null } = {}) {
   const user = await requireUser();
   const g = await prisma.group.findUniqueOrThrow({ where: { id: groupId } });
-  if (!(await canManageBoard(user, g.boardId))) throw new Error("Solo el dueño del tablero puede borrar grupos.");
+  await assertBoardEdit(user, g.boardId);
+  const others = await prisma.group.count({ where: { boardId: g.boardId, id: { not: groupId } } });
+  if (others === 0) throw new Error("El tablero debe tener al menos un grupo.");
+
+  if (opts.moveTo) {
+    const target = await prisma.group.findFirstOrThrow({ where: { id: opts.moveTo, boardId: g.boardId } });
+    const last = await prisma.task.aggregate({ where: { groupId: target.id, parentId: null }, _max: { position: true } });
+    const start = (last._max.position ?? -1) + 1;
+    const moving = await prisma.task.findMany({ where: { groupId, parentId: null }, orderBy: { position: "asc" }, select: { id: true } });
+    await prisma.$transaction([
+      ...moving.map((t, i) => prisma.task.update({ where: { id: t.id }, data: { groupId: target.id, position: start + i } })),
+      prisma.task.updateMany({ where: { groupId }, data: { groupId: target.id } }), // subtareas
+      prisma.group.delete({ where: { id: groupId } }),
+    ]);
+    await log(user, "group.deleted", `borró el grupo «${g.name}» y movió sus ${moving.length} tareas a «${target.name}»`, { boardId: g.boardId });
+    refresh(g.boardId);
+    return;
+  }
+
   const [tasks, time] = await Promise.all([
-    prisma.task.count({ where: { groupId } }),
+    prisma.task.count({ where: { groupId, parentId: null } }),
     prisma.timeEntry.aggregate({ where: { task: { OR: [{ groupId }, { parent: { groupId } }] } }, _sum: { minutes: true }, _count: true }),
   ]);
   await prisma.group.delete({ where: { id: groupId } });
