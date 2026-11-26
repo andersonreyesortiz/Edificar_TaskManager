@@ -1,3 +1,4 @@
+import { APP_NAME } from "@/lib/constants";
 import NextAuth, { type NextAuthConfig } from "next-auth";
 import Google from "next-auth/providers/google";
 import Resend from "next-auth/providers/resend";
@@ -57,7 +58,7 @@ if (process.env.AUTH_GOOGLE_ID && process.env.AUTH_GOOGLE_SECRET) {
 if (process.env.AUTH_RESEND_KEY) {
   providers.push(
     Resend({
-      from: process.env.AUTH_EMAIL_FROM ?? "Ritmo <no-reply@resend.dev>",
+      from: process.env.AUTH_EMAIL_FROM ?? `${APP_NAME} <no-reply@resend.dev>`,
     }),
   );
 }

@@ -1,3 +1,4 @@
+import { APP_NAME } from "@/lib/constants";
 import type { User } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { appUrl, esc, sendMail } from "@/lib/mailer";
@@ -38,9 +39,9 @@ export async function sendInvitationEmail(inviter: User, email: string, boardNam
   const who = esc(inviter.name ?? inviter.email);
   return sendMail(
     email,
-    `${inviter.name ?? inviter.email} te invitó a Ritmo`,
-    "Te invitaron a Ritmo",
-    `<p>${who} te invitó a colaborar en Ritmo, el gestor de tareas de su equipo${boardName ? `, en el tablero <b>${esc(boardName)}</b>` : ""}.</p>
+    `${inviter.name ?? inviter.email} te invitó a ${APP_NAME}`,
+    `Te invitaron a ${APP_NAME}`,
+    `<p>${who} te invitó a colaborar en ${APP_NAME}, el gestor de tareas de su equipo${boardName ? `, en el tablero <b>${esc(boardName)}</b>` : ""}.</p>
      <p>Entra con tu cuenta de Google usando este mismo correo: <b>${esc(email)}</b>.</p>`,
     { label: "Aceptar invitación", href: appUrl(`/login?email=${encodeURIComponent(email)}`) },
   );

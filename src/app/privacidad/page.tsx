@@ -1,7 +1,9 @@
 import Link from "next/link";
 import { Logo } from "@/components/Logo";
 
-export const metadata = { title: "Privacidad · Ritmo" };
+import { APP_NAME } from "@/lib/constants";
+
+export const metadata = { title: `Privacidad · ${APP_NAME}` };
 
 export default function PrivacyPage() {
   return (
@@ -9,7 +11,7 @@ export default function PrivacyPage() {
       <Link href="/login"><Logo /></Link>
       <h1 className="mt-8 text-2xl font-semibold">Política de privacidad</h1>
       <p className="mt-4">
-        Ritmo es la herramienta interna de gestión de tareas de Edificar. Solo pueden usarla el personal de la empresa y las
+        {APP_NAME} es la herramienta interna de gestión de tareas de Edificar. Solo pueden usarla el personal de la empresa y las
         personas invitadas por un administrador.
       </p>
       <h2 className="mt-6 font-semibold">Qué datos usamos</h2>

@@ -1,3 +1,6 @@
+/** Nombre de la app: cambiarlo aquí lo cambia en toda la app y en los correos. */
+export const APP_NAME = "EdificarTM";
+
 import type { Priority, Role, TaskStatus } from "@prisma/client";
 
 export const STATUSES: { value: TaskStatus; label: string; color: string; soft: string }[] = [
