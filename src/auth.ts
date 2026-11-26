@@ -3,7 +3,7 @@ import NextAuth, { type NextAuthConfig } from "next-auth";
 import Google from "next-auth/providers/google";
 import Resend from "next-auth/providers/resend";
 import Nodemailer from "next-auth/providers/nodemailer";
-import { esc, mailEnabled, sendMail } from "@/lib/mailer";
+import { esc, mailEnabled, mailFrom, sendMail } from "@/lib/mailer";
 import Credentials from "next-auth/providers/credentials";
 import { PrismaAdapter } from "@auth/prisma-adapter";
 import type { Role } from "@prisma/client";
@@ -76,7 +76,7 @@ if (mailEnabled && !process.env.AUTH_RESEND_KEY) {
         secure: Number(process.env.SMTP_PORT ?? 465) === 465,
         auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
       },
-      from: process.env.MAIL_FROM ?? `${APP_NAME} <${process.env.SMTP_USER}>`,
+      from: mailFrom(),
       maxAge: 30 * 60,
       async sendVerificationRequest({ identifier, url }) {
         const ok = await sendMail(

@@ -19,6 +19,16 @@ function getTransporter() {
   return transporter;
 }
 
+/**
+ * Remitente de los correos. Siempre se muestra con el nombre de la app (APP_NAME);
+ * de MAIL_FROM solo se toma la dirección, así un nombre viejo en la variable no aparece.
+ */
+export function mailFrom() {
+  const raw = process.env.MAIL_FROM ?? process.env.SMTP_USER ?? "";
+  const address = raw.match(/<([^>]+)>/)?.[1] ?? raw.trim();
+  return `${APP_NAME} <${address}>`;
+}
+
 export function appUrl(path = "") {
   const base = (process.env.APP_URL ?? "http://localhost:3000").replace(/\/$/, "");
   return `${base}${path}`;
@@ -44,7 +54,7 @@ export async function sendMail(to: string, subject: string, title: string, bodyH
   if (!t) return false;
   try {
     await t.sendMail({
-      from: process.env.MAIL_FROM ?? `${APP_NAME} <${process.env.SMTP_USER}>`,
+      from: mailFrom(),
       to,
       subject,
       html: layout(title, bodyHtml, cta),
