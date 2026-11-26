@@ -9,6 +9,7 @@ import { STATUSES, formatMinutes } from "@/lib/constants";
 import { createGroup, createTask, deleteGroup, renameGroup, startTimer, stopTimer, updateTaskStatus } from "@/lib/actions";
 import { AssigneePicker, AvatarStack, DateCell, PriorityFlag, PrioritySelect, StatusSelect } from "./cells";
 import type { BoardGroup, BoardTask, Person } from "./types";
+import { ReadOnly } from "@/components/ReadOnly";
 import { BUILTIN_COLUMNS, type BoardColumnDef, type BuiltinKey } from "@/lib/columns";
 import { FilterButton, matchesFilters, searchableText, type Filters } from "./filters";
 import { AddColumnButton, BuiltinHeader, ColumnCell, ColumnHeader, ColumnSummary } from "./columns";
@@ -20,6 +21,8 @@ type Props = {
   people: Person[];
   meId: string;
   canManage: boolean;
+  /** Editor o dueño; los colaboradores solo avanzan sus propias tareas */
+  canEdit: boolean;
   view: "table" | "kanban";
   columns: BoardColumnDef[];
   hidden: BuiltinKey[];
@@ -139,13 +142,14 @@ function AddTaskRow({ boardId, groupId }: { boardId: string; groupId: string }) 
   );
 }
 
-function GroupHeader({ group, count, minutes, collapsed, onToggle, canManage }: {
+function GroupHeader({ group, count, minutes, collapsed, onToggle, canManage, canEdit }: {
   group: BoardGroup;
   count: number;
   minutes: number;
   collapsed: boolean;
   onToggle: () => void;
   canManage: boolean;
+  canEdit: boolean;
 }) {
   const [, start] = useTransition();
   return (
@@ -155,6 +159,7 @@ function GroupHeader({ group, count, minutes, collapsed, onToggle, canManage }: 
       </button>
       <input
         defaultValue={group.name}
+        readOnly={!canEdit}
         onBlur={(e) => e.target.value.trim() && e.target.value !== group.name && start(() => renameGroup(group.id, e.target.value.trim()))}
         className="min-w-0 rounded bg-transparent px-1 text-[15px] font-semibold outline-none focus:bg-white focus:ring-1 focus:ring-line"
         style={{ color: group.color }}
@@ -179,17 +184,17 @@ function GroupHeader({ group, count, minutes, collapsed, onToggle, canManage }: 
 const BUILTIN_WIDTH: Record<BuiltinKey, number> = { people: 128, status: 144, priority: 128, due: 144, time: 128 };
 const TYPE_WIDTH: Record<string, number> = { STATUS: 140, DROPDOWN: 180, PEOPLE: 120, TEXT: 180, LINK: 180, EMAIL: 190, PHONE: 140, NUMBER: 110, DATE: 130, CHECKBOX: 90, RATING: 120 };
 
-function TableView({ boardId, groups, tasks, people, canManage, columns, hidden }: Props) {
+function TableView({ boardId, groups, tasks, people, canManage, canEdit, columns, hidden }: Props) {
   const builtins = BUILTIN_COLUMNS.filter((b) => !hidden.includes(b.key));
   const minWidth = 300 + builtins.reduce((a, b) => a + BUILTIN_WIDTH[b.key], 0) + columns.reduce((a, c) => a + (TYPE_WIDTH[c.type] ?? 140), 0) + 44;
   const hasSummary = columns.some((c) => c.type === "NUMBER" || c.type === "STATUS" || c.type === "CHECKBOX");
   const builtinCell = (k: BuiltinKey, t: BoardTask) => {
     switch (k) {
       case "people": return <AssigneePicker taskId={t.id} assignees={t.assignees} people={people} />;
-      case "status": return <StatusSelect taskId={t.id} status={t.status} />;
+      case "status": return <ReadOnly on={!canEdit && !t.mine}><StatusSelect taskId={t.id} status={t.status} /></ReadOnly>;
       case "priority": return <PrioritySelect taskId={t.id} priority={t.priority} />;
       case "due": return <DateCell taskId={t.id} value={t.dueDate} done={t.status === "DONE"} />;
-      case "time": return <TimeCell task={t} />;
+      case "time": return <ReadOnly on={!canEdit && !t.mine}><TimeCell task={t} /></ReadOnly>;
     }
   };
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
@@ -212,6 +217,7 @@ function TableView({ boardId, groups, tasks, people, canManage, columns, hidden 
               collapsed={!!collapsed[g.id]}
               onToggle={() => setCollapsed((c) => ({ ...c, [g.id]: !c[g.id] }))}
               canManage={canManage}
+              canEdit={canEdit}
             />
             {!collapsed[g.id] && (
               <div className="card overflow-x-auto" style={{ borderLeft: `4px solid ${g.color}` }}>
@@ -232,11 +238,15 @@ function TableView({ boardId, groups, tasks, people, canManage, columns, hidden 
                       ))}
                       {columns.map((c, i) => (
                         <th key={c.id} className="border-l border-line/60 px-2 py-2 font-normal">
-                          <ColumnHeader column={c} canManage={canManage} isFirst={i === 0} isLast={i === columns.length - 1} />
+                          {canEdit ? (
+                            <ColumnHeader column={c} canManage={canManage} isFirst={i === 0} isLast={i === columns.length - 1} />
+                          ) : (
+                            <span className="block truncate px-1 font-medium">{c.name}</span>
+                          )}
                         </th>
                       ))}
                       <th className="px-1 py-1.5 text-center font-normal">
-                        <AddColumnButton boardId={boardId} hidden={hidden} canManage={canManage} />
+                        {canEdit && <AddColumnButton boardId={boardId} hidden={hidden} canManage={canManage} />}
                       </th>
                     </tr>
                   </thead>
@@ -254,11 +264,15 @@ function TableView({ boardId, groups, tasks, people, canManage, columns, hidden 
                           </Link>
                         </td>
                         {builtins.map((b) => (
-                          <td key={b.key} className="px-2 py-1.5">{builtinCell(b.key, t)}</td>
+                          <td key={b.key} className="px-2 py-1.5">
+                            {b.key === "status" || b.key === "time" ? builtinCell(b.key, t) : <ReadOnly on={!canEdit}>{builtinCell(b.key, t)}</ReadOnly>}
+                          </td>
                         ))}
                         {columns.map((c) => (
                           <td key={c.id} className="border-l border-line/60 px-1.5 py-1">
-                            <ColumnCell taskId={t.id} column={c} value={t.values[c.id] ?? null} people={people} />
+                            <ReadOnly on={!canEdit}>
+                              <ColumnCell taskId={t.id} column={c} value={t.values[c.id] ?? null} people={people} />
+                            </ReadOnly>
                           </td>
                         ))}
                         <td />
@@ -278,14 +292,15 @@ function TableView({ boardId, groups, tasks, people, canManage, columns, hidden 
                     )}
                   </tbody>
                 </table>
-                <AddTaskRow boardId={boardId} groupId={g.id} />
+                {canEdit && <AddTaskRow boardId={boardId} groupId={g.id} />}
                 {rows.length > 0 && <StatusBar tasks={rows} label={`${done} de ${rows.length} terminadas`} />}
               </div>
             )}
           </section>
         );
       })}
-      <form
+      {canEdit && (
+        <form
         onSubmit={(e) => {
           e.preventDefault();
           if (!newGroup.trim()) return;
@@ -297,7 +312,8 @@ function TableView({ boardId, groups, tasks, people, canManage, columns, hidden 
       >
         <input value={newGroup} onChange={(e) => setNewGroup(e.target.value)} placeholder="Nombre del nuevo grupo" className="input w-64" />
         <button className="btn-outline"><Plus size={14} /> Agregar grupo</button>
-      </form>
+        </form>
+      )}
     </div>
   );
 }
@@ -316,7 +332,7 @@ function StatusBar({ tasks, label }: { tasks: BoardTask[]; label: string }) {
   );
 }
 
-function KanbanView({ tasks, groups }: Props) {
+function KanbanView({ tasks, groups, canEdit }: Props) {
   const href = useOpenTask();
   const router = useRouter();
   const [dragging, setDragging] = useState<string | null>(null);
@@ -365,7 +381,7 @@ function KanbanView({ tasks, groups }: Props) {
                     key={t.id}
                     href={href(t.id)}
                     scroll={false}
-                    draggable
+                    draggable={canEdit || t.mine}
                     onDragStart={() => setDragging(t.id)}
                     className="card block cursor-grab p-3 shadow-sm hover:shadow active:cursor-grabbing"
                   >

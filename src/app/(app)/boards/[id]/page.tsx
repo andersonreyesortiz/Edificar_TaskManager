@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/session";
-import { canAccessBoard, canManageBoard } from "@/lib/access";
+import { boardLevel, canAccessBoard } from "@/lib/access";
 import { BoardView } from "@/components/board/BoardView";
 import { BoardHeader } from "@/components/board/BoardHeader";
 import { TaskPanel } from "@/components/task/TaskPanel";
@@ -63,6 +63,7 @@ export default async function BoardPage({
       subtaskDone: subs.filter((s) => s.status === "DONE").length,
       minutes: (minutesOf.get(t.id) ?? 0) + subs.reduce((a, s) => a + (minutesOf.get(s.id) ?? 0), 0),
       running: runningIds.has(t.id) || subs.some((s) => runningIds.has(s.id)),
+      mine: t.assignees.some((a) => a.userId === user.id),
       values: Object.fromEntries(t.values.map((v) => [v.columnId, v.value as ColumnValue])),
     };
   });
@@ -71,7 +72,10 @@ export default async function BoardPage({
   peopleMap.set(board.owner.id, board.owner);
   board.members.forEach((m) => peopleMap.set(m.user.id, m.user));
   const people = [...peopleMap.values()];
-  const canManage = await canManageBoard(user, id);
+  const level = await boardLevel(user, id);
+  const canManage = level === "manage";
+  const canEdit = canManage || level === "edit";
+  const memberRoles = Object.fromEntries(board.members.map((m) => [m.user.id, m.role]));
   const currentView = view === "kanban" ? "kanban" : "table";
   const columns: BoardColumnDef[] = board.columns.map((c) => ({ id: c.id, name: c.name, type: c.type, position: c.position, settings: asSettings(c.settings) }));
   const hidden = (board.hiddenColumns ?? []) as BuiltinKey[];
@@ -79,8 +83,9 @@ export default async function BoardPage({
   return (
     <div className="px-4 py-6 md:px-8">
       <BoardHeader
-        board={{ id: board.id, name: board.name, description: board.description, color: board.color, ownerId: board.ownerId }}
+        board={{ id: board.id, name: board.name, description: board.description, color: board.color, ownerId: board.ownerId, autoGroupByStatus: board.autoGroupByStatus }}
         members={people}
+        memberRoles={memberRoles}
         allUsers={allUsers}
         canManage={canManage}
         view={currentView}
@@ -97,11 +102,12 @@ export default async function BoardPage({
         people={people}
         meId={user.id}
         canManage={canManage}
+        canEdit={canEdit}
         view={currentView}
         columns={columns}
         hidden={hidden}
       />
-      {openTaskId && <TaskPanel taskId={openTaskId} boardId={board.id} people={people} groups={board.groups} user={user} columns={columns} />}
+      {openTaskId && <TaskPanel taskId={openTaskId} boardId={board.id} people={people} groups={board.groups} user={user} columns={columns} canEdit={canEdit} />}
     </div>
   );
 }

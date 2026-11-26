@@ -3,10 +3,10 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
-import type { ColumnType, Prisma, Priority, Role, TaskStatus, User } from "@prisma/client";
+import type { BoardRole, ColumnType, Prisma, Priority, Role, TaskStatus, User } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireAdmin, requireUser } from "@/lib/session";
-import { assertBoardAccess, assertTaskAccess, canManageBoard } from "@/lib/access";
+import { assertBoardAccess, assertBoardEdit, assertTaskAccess, assertTaskEdit, assertTaskProgress, canManageBoard } from "@/lib/access";
 import { BOARD_COLORS, priorityMeta, statusMeta } from "@/lib/constants";
 import { AuthError } from "next-auth";
 import { notify, sendInvitationEmail } from "@/lib/notify";
@@ -123,16 +123,17 @@ export async function archiveBoard(boardId: string) {
   redirect("/");
 }
 
-export async function addBoardMember(boardId: string, userId: string) {
+export async function addBoardMember(boardId: string, userId: string, role: BoardRole = "COLLABORATOR") {
   const user = await requireUser();
   if (!(await canManageBoard(user, boardId))) throw new Error("Solo el dueño del tablero puede agregar miembros.");
+  if (role !== "EDITOR" && role !== "COLLABORATOR") throw new Error("Permiso no válido.");
   const member = await prisma.user.findUniqueOrThrow({ where: { id: userId } });
   await prisma.boardMember.upsert({
     where: { boardId_userId: { boardId, userId } },
-    create: { boardId, userId },
-    update: {},
+    create: { boardId, userId, role },
+    update: { role },
   });
-  await log(user, "board.member_added", `agregó a ${member.name ?? member.email} al tablero`, { boardId });
+  await log(user, "board.member_added", `agregó a ${member.name ?? member.email} al tablero como ${role === "EDITOR" ? "Editor" : "Colaborador"}`, { boardId });
   const board = await prisma.board.findUniqueOrThrow({ where: { id: boardId }, select: { name: true } });
   await notify(user, [userId], {
     text: `te agregó al tablero «${board.name}»`,
@@ -141,6 +142,42 @@ export async function addBoardMember(boardId: string, userId: string) {
     cta: "Abrir tablero",
   });
   refresh(boardId);
+}
+
+export async function setBoardMemberRole(boardId: string, userId: string, role: BoardRole) {
+  const user = await requireUser();
+  if (!(await canManageBoard(user, boardId))) throw new Error("Solo el dueño del tablero puede cambiar permisos.");
+  if (role !== "EDITOR" && role !== "COLLABORATOR") throw new Error("Permiso no válido.");
+  const m = await prisma.boardMember.update({ where: { boardId_userId: { boardId, userId } }, data: { role }, include: { user: true } });
+  await log(user, "board.member_role", `cambió el permiso de ${m.user.name ?? m.user.email} a ${role === "EDITOR" ? "Editor" : "Colaborador"}`, { boardId });
+  refresh(boardId);
+}
+
+export async function setAutoGroupByStatus(boardId: string, on: boolean) {
+  const user = await requireUser();
+  if (!(await canManageBoard(user, boardId))) throw new Error("Solo el dueño del tablero puede cambiar esta opción.");
+  await prisma.board.update({ where: { id: boardId }, data: { autoGroupByStatus: on } });
+  if (on) {
+    // Ordena de una vez las tareas que ya existen.
+    const tasks = await prisma.task.findMany({ where: { boardId, parentId: null }, select: { id: true, status: true, groupId: true } });
+    for (const t of tasks) await placeInStatusGroup(boardId, t);
+  }
+  await log(user, "board.autogroup", on ? "activó «organizar grupos por estado»" : "desactivó «organizar grupos por estado»", { boardId });
+  refresh(boardId);
+}
+
+/** Mueve la tarea (y sus subtareas) al grupo con el nombre de su estado; lo crea si no existe. */
+async function placeInStatusGroup(boardId: string, t: { id: string; status: TaskStatus; groupId: string | null }) {
+  const meta = statusMeta(t.status);
+  let group = await prisma.group.findFirst({ where: { boardId, name: { equals: meta.label, mode: "insensitive" } } });
+  if (!group) {
+    const last = await prisma.group.findFirst({ where: { boardId }, orderBy: { position: "desc" } });
+    group = await prisma.group.create({ data: { boardId, name: meta.label, color: meta.color, position: (last?.position ?? -1) + 1 } });
+  }
+  if (group.id === t.groupId) return;
+  const lastTask = await prisma.task.findFirst({ where: { groupId: group.id, parentId: null }, orderBy: { position: "desc" } });
+  await prisma.task.update({ where: { id: t.id }, data: { groupId: group.id, position: (lastTask?.position ?? -1) + 1 } });
+  await prisma.task.updateMany({ where: { parentId: t.id }, data: { groupId: group.id } });
 }
 
 export async function removeBoardMember(boardId: string, userId: string) {
@@ -156,7 +193,7 @@ export async function removeBoardMember(boardId: string, userId: string) {
 
 export async function createGroup(boardId: string, name: string) {
   const user = await requireUser();
-  await assertBoardAccess(user, boardId);
+  await assertBoardEdit(user, boardId);
   const last = await prisma.group.findFirst({ where: { boardId }, orderBy: { position: "desc" } });
   const colors = ["#6366f1", "#0ea5e9", "#14b8a6", "#f59e0b", "#ec4899", "#8b5cf6"];
   await prisma.group.create({
@@ -169,7 +206,7 @@ export async function createGroup(boardId: string, name: string) {
 export async function renameGroup(groupId: string, name: string) {
   const user = await requireUser();
   const g = await prisma.group.findUniqueOrThrow({ where: { id: groupId } });
-  await assertBoardAccess(user, g.boardId);
+  await assertBoardEdit(user, g.boardId);
   await prisma.group.update({ where: { id: groupId }, data: { name } });
   refresh(g.boardId);
 }
@@ -187,13 +224,13 @@ export async function deleteGroup(groupId: string) {
 
 async function columnWithAccess(user: User, columnId: string) {
   const col = await prisma.boardColumn.findUniqueOrThrow({ where: { id: columnId } });
-  await assertBoardAccess(user, col.boardId);
+  await assertBoardEdit(user, col.boardId);
   return col;
 }
 
 export async function createColumn(boardId: string, name: string, type: ColumnType) {
   const user = await requireUser();
-  await assertBoardAccess(user, boardId);
+  await assertBoardEdit(user, boardId);
   if (!COLUMN_TYPES.some((t) => t.value === type)) throw new Error("Tipo de columna no válido.");
   const clean = name.trim().slice(0, 60) || columnTypeLabel(type);
   const last = await prisma.boardColumn.findFirst({ where: { boardId }, orderBy: { position: "desc" } });
@@ -288,7 +325,7 @@ function cleanValue(type: ColumnType, settings: ColumnSettings, v: unknown): Col
 
 export async function setColumnValue(taskId: string, columnId: string, raw: ColumnValue) {
   const user = await requireUser();
-  const t = await assertTaskAccess(user, taskId);
+  const t = await assertTaskEdit(user, taskId);
   const col = await prisma.boardColumn.findUniqueOrThrow({ where: { id: columnId } });
   if (col.boardId !== t.boardId) throw new Error("La columna no es de este tablero.");
   const settings = asSettings(col.settings);
@@ -323,7 +360,7 @@ const taskInput = z.object({
 export async function createTask(input: z.infer<typeof taskInput>) {
   const user = await requireUser();
   const data = taskInput.parse(input);
-  await assertBoardAccess(user, data.boardId);
+  await assertBoardEdit(user, data.boardId);
   let groupId = data.groupId ?? null;
   if (data.parentId) {
     const parent = await prisma.task.findUniqueOrThrow({ where: { id: data.parentId } });
@@ -356,7 +393,7 @@ export async function createTask(input: z.infer<typeof taskInput>) {
 
 export async function updateTaskTitle(taskId: string, title: string) {
   const user = await requireUser();
-  const t = await assertTaskAccess(user, taskId);
+  const t = await assertTaskEdit(user, taskId);
   if (!title.trim() || title.trim() === t.title) return;
   await prisma.task.update({ where: { id: taskId }, data: { title: title.trim() } });
   await log(user, "task.renamed", `renombró «${t.title}» a «${title.trim()}»`, { boardId: t.boardId, taskId });
@@ -365,7 +402,7 @@ export async function updateTaskTitle(taskId: string, title: string) {
 
 export async function updateTaskDescription(taskId: string, description: string) {
   const user = await requireUser();
-  const t = await assertTaskAccess(user, taskId);
+  const t = await assertTaskEdit(user, taskId);
   await prisma.task.update({ where: { id: taskId }, data: { description: description.trim() || null } });
   await log(user, "task.description", `actualizó la descripción de «${t.title}»`, { boardId: t.boardId, taskId });
   refresh(t.boardId);
@@ -373,18 +410,47 @@ export async function updateTaskDescription(taskId: string, description: string)
 
 export async function updateTaskStatus(taskId: string, status: TaskStatus) {
   const user = await requireUser();
-  const t = await assertTaskAccess(user, taskId);
+  const t = await assertTaskProgress(user, taskId);
+  const before = await prisma.task.findUniqueOrThrow({
+    where: { id: taskId },
+    select: {
+      status: true,
+      groupId: true,
+      parentId: true,
+      createdById: true,
+      parent: { select: { title: true } },
+      board: { select: { name: true, autoGroupByStatus: true } },
+      assignees: { select: { assignedById: true } },
+    },
+  });
+  if (before.status === status) return;
   await prisma.task.update({
     where: { id: taskId },
     data: { status, completedAt: status === "DONE" ? new Date() : null },
   });
   await log(user, "task.status", `cambió el estado de «${t.title}» a ${statusMeta(status).label}`, { boardId: t.boardId, taskId });
+  if (before.board.autoGroupByStatus && !before.parentId) {
+    await placeInStatusGroup(t.boardId, { id: taskId, status, groupId: before.groupId });
+  }
+  if (status === "DONE") {
+    // Avisar a quien asignó la tarea (o a quien la creó, si no hay registro de la asignación).
+    const assigners = before.assignees.map((a) => a.assignedById).filter((x): x is string => !!x);
+    const recipients = assigners.length ? assigners : [before.createdById];
+    const title = before.parent ? `${t.title} (subtarea de «${before.parent.title}»)` : t.title;
+    await notify(user, recipients, {
+      text: `terminó la tarea «${title}»`,
+      link: `/boards/${t.boardId}?task=${taskId}`,
+      subject: `Tarea terminada: ${t.title}`,
+      detailHtml: `<p>Tablero: <b>${escapeHtml(before.board.name)}</b></p>`,
+      cta: "Ver tarea",
+    });
+  }
   refresh(t.boardId);
 }
 
 export async function updateTaskPriority(taskId: string, priority: Priority) {
   const user = await requireUser();
-  const t = await assertTaskAccess(user, taskId);
+  const t = await assertTaskEdit(user, taskId);
   await prisma.task.update({ where: { id: taskId }, data: { priority } });
   await log(user, "task.priority", `cambió la prioridad de «${t.title}» a ${priorityMeta(priority).label}`, { boardId: t.boardId, taskId });
   refresh(t.boardId);
@@ -392,7 +458,7 @@ export async function updateTaskPriority(taskId: string, priority: Priority) {
 
 export async function updateTaskDates(taskId: string, field: "startDate" | "dueDate", value: string | null) {
   const user = await requireUser();
-  const t = await assertTaskAccess(user, taskId);
+  const t = await assertTaskEdit(user, taskId);
   const date = value ? new Date(`${value}T12:00:00`) : null;
   await prisma.task.update({ where: { id: taskId }, data: { [field]: date } });
   const label = field === "dueDate" ? "la fecha límite" : "la fecha de inicio";
@@ -407,7 +473,7 @@ export async function updateTaskDates(taskId: string, field: "startDate" | "dueD
 
 export async function updateTaskEstimate(taskId: string, hours: number | null) {
   const user = await requireUser();
-  const t = await assertTaskAccess(user, taskId);
+  const t = await assertTaskEdit(user, taskId);
   const minutes = hours && hours > 0 ? Math.round(hours * 60) : null;
   await prisma.task.update({ where: { id: taskId }, data: { estimateMinutes: minutes } });
   await log(user, "task.estimate", minutes ? `estimó «${t.title}» en ${hours} h` : `quitó la estimación de «${t.title}»`, { boardId: t.boardId, taskId });
@@ -416,7 +482,7 @@ export async function updateTaskEstimate(taskId: string, hours: number | null) {
 
 export async function moveTaskToGroup(taskId: string, groupId: string) {
   const user = await requireUser();
-  const t = await assertTaskAccess(user, taskId);
+  const t = await assertTaskEdit(user, taskId);
   const g = await prisma.group.findUniqueOrThrow({ where: { id: groupId } });
   if (g.boardId !== t.boardId) throw new Error("El grupo es de otro tablero.");
   await prisma.task.updateMany({ where: { OR: [{ id: taskId }, { parentId: taskId }] }, data: { groupId } });
@@ -426,7 +492,7 @@ export async function moveTaskToGroup(taskId: string, groupId: string) {
 
 export async function setTaskAssignees(taskId: string, userIds: string[]) {
   const user = await requireUser();
-  const t = await assertTaskAccess(user, taskId);
+  const t = await assertTaskEdit(user, taskId);
   const before = await prisma.taskAssignee.findMany({ where: { taskId }, select: { userId: true } });
   const beforeIds = new Set(before.map((b) => b.userId));
   const afterIds = new Set(userIds);
@@ -436,7 +502,7 @@ export async function setTaskAssignees(taskId: string, userIds: string[]) {
 
   await prisma.$transaction([
     prisma.taskAssignee.deleteMany({ where: { taskId, userId: { in: removed } } }),
-    prisma.taskAssignee.createMany({ data: added.map((userId) => ({ taskId, userId })), skipDuplicates: true }),
+    prisma.taskAssignee.createMany({ data: added.map((userId) => ({ taskId, userId, assignedById: user.id })), skipDuplicates: true }),
     // Quien es responsable de una tarea debe poder ver el tablero.
     prisma.boardMember.createMany({ data: added.map((userId) => ({ boardId: t.boardId, userId })), skipDuplicates: true }),
   ]);
@@ -466,7 +532,7 @@ export async function setTaskAssignees(taskId: string, userIds: string[]) {
 
 export async function deleteTask(taskId: string) {
   const user = await requireUser();
-  const t = await assertTaskAccess(user, taskId);
+  const t = await assertTaskEdit(user, taskId);
   const task = await prisma.task.findUniqueOrThrow({ where: { id: taskId } });
   await prisma.task.delete({ where: { id: taskId } });
   await log(user, "task.deleted", `borró ${task.parentId ? "la subtarea" : "la tarea"} «${t.title}»`, {
@@ -516,7 +582,7 @@ async function stopRunning(user: User) {
 
 export async function startTimer(taskId: string) {
   const user = await requireUser();
-  const t = await assertTaskAccess(user, taskId);
+  const t = await assertTaskProgress(user, taskId);
   const stopped = await stopRunning(user);
   await prisma.timeEntry.create({ data: { taskId, userId: user.id, startedAt: new Date() } });
   const task = await prisma.task.findUniqueOrThrow({ where: { id: taskId } });
@@ -547,7 +613,7 @@ const manualEntry = z.object({
 export async function addTimeEntry(input: z.infer<typeof manualEntry>) {
   const user = await requireUser();
   const data = manualEntry.parse(input);
-  const t = await assertTaskAccess(user, data.taskId);
+  const t = await assertTaskProgress(user, data.taskId);
   const total = Math.round(data.hours * 60 + data.minutes);
   if (total <= 0) throw new Error("Escribe un tiempo mayor que cero.");
   const startedAt = new Date(`${data.date}T09:00:00`);

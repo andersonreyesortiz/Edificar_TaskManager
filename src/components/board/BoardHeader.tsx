@@ -2,10 +2,11 @@
 
 import Link from "next/link";
 import { useState, useTransition } from "react";
-import { Archive, Columns3, Rows3, UserPlus, X } from "lucide-react";
+import { Archive, Columns3, Layers, Rows3, UserPlus, X } from "lucide-react";
+import type { BoardRole } from "@prisma/client";
 import clsx from "clsx";
 import { BOARD_COLORS, formatMinutes } from "@/lib/constants";
-import { addBoardMember, archiveBoard, removeBoardMember, updateBoard } from "@/lib/actions";
+import { addBoardMember, archiveBoard, removeBoardMember, setAutoGroupByStatus, setBoardMemberRole, updateBoard } from "@/lib/actions";
 import { Popover } from "@/components/Popover";
 import { Avatar } from "@/components/Avatar";
 import { AvatarStack } from "./cells";
@@ -14,13 +15,15 @@ import type { Person } from "./types";
 export function BoardHeader({
   board,
   members,
+  memberRoles,
   allUsers,
   canManage,
   view,
   stats,
 }: {
-  board: { id: string; name: string; description: string | null; color: string; ownerId: string };
+  board: { id: string; name: string; description: string | null; color: string; ownerId: string; autoGroupByStatus: boolean };
   members: Person[];
+  memberRoles: Record<string, BoardRole>;
   allUsers: Person[];
   canManage: boolean;
   view: "table" | "kanban";
@@ -28,6 +31,7 @@ export function BoardHeader({
 }) {
   const [, start] = useTransition();
   const [search, setSearch] = useState("");
+  const [newRole, setNewRole] = useState<BoardRole>("COLLABORATOR");
   const memberIds = new Set(members.map((m) => m.id));
   const candidates = allUsers.filter(
     (u) => !memberIds.has(u.id) && (u.name ?? u.email).toLowerCase().includes(search.toLowerCase()),
@@ -105,12 +109,23 @@ export function BoardHeader({
                     <span className="min-w-0 flex-1 truncate">{m.name ?? m.email}</span>
                     {m.id === board.ownerId ? (
                       <span className="text-[11px] text-muted">Dueño</span>
-                    ) : (
-                      canManage && (
+                    ) : canManage ? (
+                      <>
+                        <select
+                          value={memberRoles[m.id] ?? "COLLABORATOR"}
+                          onChange={(e) => start(() => setBoardMemberRole(board.id, m.id, e.target.value as BoardRole))}
+                          className="rounded border border-line bg-white px-1 py-0.5 text-[11px]"
+                          title="Permiso en este tablero"
+                        >
+                          <option value="EDITOR">Editor</option>
+                          <option value="COLLABORATOR">Colaborador</option>
+                        </select>
                         <button onClick={() => start(() => removeBoardMember(board.id, m.id))} className="rounded p-0.5 text-muted hover:bg-red-50 hover:text-red-600" title="Quitar">
                           <X size={13} />
                         </button>
-                      )
+                      </>
+                    ) : (
+                      <span className="text-[11px] text-muted">{memberRoles[m.id] === "EDITOR" ? "Editor" : "Colaborador"}</span>
                     )}
                   </div>
                 ))}
@@ -118,10 +133,22 @@ export function BoardHeader({
                   <>
                     <div className="my-1 border-t border-line" />
                     <p className="flex items-center gap-1 px-2 py-1 text-xs font-medium text-muted"><UserPlus size={12} /> Agregar persona</p>
+                    <div className="mb-1 flex gap-1 px-1">
+                      {(["COLLABORATOR", "EDITOR"] as const).map((r) => (
+                        <button
+                          key={r}
+                          onClick={() => setNewRole(r)}
+                          className={`flex-1 rounded-md border px-2 py-1 text-left text-[11px] leading-tight ${newRole === r ? "border-brand-500 bg-brand-50" : "border-line"}`}
+                        >
+                          <span className="block font-medium">{r === "EDITOR" ? "Editor" : "Colaborador"}</span>
+                          <span className="text-muted">{r === "EDITOR" ? "Crea y edita todo" : "Solo avanza sus tareas"}</span>
+                        </button>
+                      ))}
+                    </div>
                     <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar" className="input mb-1" />
                     <div className="max-h-40 overflow-y-auto">
                       {candidates.map((u) => (
-                        <button key={u.id} onClick={() => start(() => addBoardMember(board.id, u.id))} className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-canvas">
+                        <button key={u.id} onClick={() => start(() => addBoardMember(board.id, u.id, newRole))} className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-canvas">
                           <Avatar name={u.name} email={u.email} image={u.image} size={22} />
                           <span className="truncate">{u.name ?? u.email}</span>
                         </button>
@@ -136,6 +163,19 @@ export function BoardHeader({
               </div>
             )}
           </Popover>
+          {canManage && (
+            <button
+              onClick={() => {
+                const on = !board.autoGroupByStatus;
+                if (on && !confirm("Las tareas se moverán al grupo de su estado (Por hacer, En curso, Terminada…). Los grupos que falten se crearán. ¿Continuar?")) return;
+                start(() => setAutoGroupByStatus(board.id, on));
+              }}
+              className={clsx("btn-outline", board.autoGroupByStatus && "border-brand-500 bg-brand-50 text-brand-900")}
+              title="Cuando una tarea cambia de estado, se mueve sola al grupo con el nombre de ese estado (por ejemplo «Terminada»). Si el grupo no existe, se crea."
+            >
+              <Layers size={15} /> <span className="hidden sm:inline">Agrupar por estado</span>{board.autoGroupByStatus ? " ✓" : ""}
+            </button>
+          )}
           {canManage && (
             <button
               onClick={() => confirm("¿Archivar este tablero? Dejará de aparecer para todos.") && start(() => archiveBoard(board.id))}

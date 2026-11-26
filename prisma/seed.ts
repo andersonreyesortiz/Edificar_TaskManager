@@ -47,7 +47,7 @@ async function main() {
 
   async function board(name: string, description: string, color: string, members: string[], groups: { name: string; color: string; tasks: Seed[] }[]) {
     const b = await prisma.board.create({
-      data: { name, description, color, ownerId: admin.id, members: { create: members.map((userId) => ({ userId })) } },
+      data: { name, description, color, ownerId: admin.id, members: { create: members.map((userId) => ({ userId, role: userId === externo.id || userId === lucia.id ? ("COLLABORATOR" as const) : ("EDITOR" as const) })) } },
     });
     await prisma.activity.create({ data: { userId: admin.id, boardId: b.id, action: "board.created", detail: `creó el tablero «${name}»`, createdAt: daysAgo(21) } });
     for (const [gi, g] of groups.entries()) {
@@ -66,7 +66,7 @@ async function main() {
             dueDate: t.due !== undefined ? daysAgo(-t.due, 12) : null,
             completedAt: t.status === "DONE" ? daysAgo(Math.floor(Math.random() * 14)) : null,
             createdAt: daysAgo(20),
-            assignees: { create: t.who.map((userId) => ({ userId })) },
+            assignees: { create: t.who.map((userId) => ({ userId, assignedById: admin.id })) },
           },
         });
         await prisma.activity.create({ data: { userId: admin.id, boardId: b.id, taskId: task.id, action: "task.created", detail: `creó la tarea «${t.title}»`, createdAt: daysAgo(20) } });

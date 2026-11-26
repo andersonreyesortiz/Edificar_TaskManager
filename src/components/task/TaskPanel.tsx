@@ -6,6 +6,8 @@ import { AssigneePicker, DateCell, PrioritySelect, StatusSelect } from "@/compon
 import type { Person } from "@/components/board/types";
 import { ColumnCell } from "@/components/board/columns";
 import { TYPE_ICONS } from "@/components/board/column-icons";
+import { ReadOnly } from "@/components/ReadOnly";
+import { isAssigned } from "@/lib/access";
 import type { BoardColumnDef, ColumnValue } from "@/lib/columns";
 import {
   CloseButton,
@@ -34,6 +36,7 @@ export async function TaskPanel({
   groups,
   user,
   columns,
+  canEdit,
 }: {
   taskId: string;
   boardId: string;
@@ -41,6 +44,7 @@ export async function TaskPanel({
   groups: Group[];
   user: User;
   columns: BoardColumnDef[];
+  canEdit: boolean;
 }) {
   const task = await prisma.task.findUnique({
     where: { id: taskId },
@@ -60,6 +64,7 @@ export async function TaskPanel({
   });
   if (!task || task.boardId !== boardId) return null;
 
+  const canProgress = canEdit || (await isAssigned(user.id, task.id));
   const running = await prisma.timeEntry.findFirst({ where: { userId: user.id, endedAt: null, taskId } });
   const ownMinutes = task.timeEntries.reduce((a, e) => a + e.minutes, 0);
   const subMinutes = task.subtasks.reduce((a, s) => a + s.timeEntries.reduce((b, e) => b + e.minutes, 0), 0);
@@ -84,17 +89,25 @@ export async function TaskPanel({
           <span>Tarea creada por {task.createdBy.name ?? task.createdBy.email} el {relative(task.createdAt)}</span>
         )}
         <div className="ml-auto flex items-center gap-1">
-          <DeleteTaskButton taskId={task.id} isSubtask={!!task.parentId} />
+          {canEdit && <DeleteTaskButton taskId={task.id} isSubtask={!!task.parentId} />}
           <CloseButton />
         </div>
       </div>
 
       <div className="flex-1 space-y-8 overflow-y-auto px-6 py-5">
-        <TitleEditor taskId={task.id} title={task.title} />
+        {canEdit ? <TitleEditor taskId={task.id} title={task.title} /> : <h2 className="px-1 text-xl font-semibold">{task.title}</h2>}
+        {!canEdit && (
+          <p className="rounded-lg bg-canvas px-3 py-2 text-xs text-muted">
+            {canProgress
+              ? "Eres colaborador en este tablero: puedes cambiar el estado, registrar tiempo y comentar."
+              : "Eres colaborador en este tablero: solo puedes comentar en tareas que no tienes asignadas."}
+          </p>
+        )}
 
         <dl className="grid grid-cols-[8rem_1fr] items-center gap-x-4 gap-y-2.5 text-sm">
           <dt className="text-muted">Estado</dt>
-          <dd><StatusSelect taskId={task.id} status={task.status} /></dd>
+          <dd><ReadOnly on={!canProgress}><StatusSelect taskId={task.id} status={task.status} /></ReadOnly></dd>
+          <ReadOnly on={!canEdit}>
           <dt className="text-muted">Responsables</dt>
           <dd><AssigneePicker taskId={task.id} assignees={task.assignees.map((a) => a.user)} people={people} /></dd>
           <dt className="text-muted">Prioridad</dt>
@@ -120,11 +133,16 @@ export async function TaskPanel({
               </div>
             );
           })}
+          </ReadOnly>
         </dl>
 
         <section>
           <h3 className="mb-2 text-sm font-semibold">Descripción</h3>
-          <DescriptionEditor taskId={task.id} description={task.description ?? ""} />
+          {canEdit ? (
+            <DescriptionEditor taskId={task.id} description={task.description ?? ""} />
+          ) : (
+            <p className="whitespace-pre-wrap text-sm text-ink/80">{task.description || <span className="text-muted">Sin descripción</span>}</p>
+          )}
         </section>
 
         {!task.parentId && (
@@ -144,12 +162,12 @@ export async function TaskPanel({
                   <div key={s.id} className="flex items-center gap-2 px-3 py-1.5">
                     <SubtaskTitle id={s.id} title={s.title} done={s.status === "DONE"} />
                     {mins > 0 && <span className="text-xs text-muted">{formatMinutes(mins)}</span>}
-                    <AssigneePicker taskId={s.id} assignees={s.assignees.map((a) => a.user)} people={people} />
-                    <StatusSelect taskId={s.id} status={s.status} />
+                    <ReadOnly on={!canEdit}><AssigneePicker taskId={s.id} assignees={s.assignees.map((a) => a.user)} people={people} /></ReadOnly>
+                    <ReadOnly on={!canProgress}><StatusSelect taskId={s.id} status={s.status} /></ReadOnly>
                   </div>
                 );
               })}
-              <SubtaskAdd boardId={boardId} parentId={task.id} />
+              {canEdit && <SubtaskAdd boardId={boardId} parentId={task.id} />}
             </div>
           </section>
         )}
@@ -160,7 +178,7 @@ export async function TaskPanel({
               Tiempo registrado <span className="font-normal text-muted">{formatMinutes(total)}</span>
               {task.estimateMinutes ? <span className="font-normal text-muted"> de {formatMinutes(task.estimateMinutes)} estimadas</span> : null}
             </h3>
-            <TaskTimerButton taskId={task.id} running={running ? running.startedAt.toISOString() : null} />
+            {canProgress && <TaskTimerButton taskId={task.id} running={running ? running.startedAt.toISOString() : null} />}
           </div>
           {byPerson.size > 0 && (
             <div className="mb-3 flex flex-wrap gap-2">
@@ -173,7 +191,7 @@ export async function TaskPanel({
               {subMinutes > 0 && <span className="rounded-full bg-canvas px-2.5 py-0.5 text-xs text-muted">+ {formatMinutes(subMinutes)} en subtareas</span>}
             </div>
           )}
-          <ManualTimeForm taskId={task.id} />
+          {canProgress && <ManualTimeForm taskId={task.id} />}
           {task.timeEntries.length > 0 && (
             <ul className="mt-3 divide-y divide-line text-sm">
               {task.timeEntries.map((e) => (

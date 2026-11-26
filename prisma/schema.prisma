@@ -119,6 +119,8 @@ model Board {
   archived    Boolean  @default(false)
   /// Columnas fijas que el dueño ocultó: people, status, priority, due, time
   hiddenColumns String[] @default([])
+  /// Mueve cada tarea al grupo de su estado (lo crea si no existe)
+  autoGroupByStatus Boolean @default(false)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -131,10 +133,18 @@ model Board {
   invitations Invitation[]
 }
 
+enum BoardRole {
+  /// Puede crear y editar tareas, grupos y columnas
+  EDITOR
+  /// Solo actualiza el estado, registra tiempo y comenta en las tareas que tiene asignadas
+  COLLABORATOR
+}
+
 model BoardMember {
   boardId String
   userId  String
-  addedAt DateTime @default(now())
+  role    BoardRole @default(COLLABORATOR)
+  addedAt DateTime  @default(now())
 
   board Board @relation(fields: [boardId], references: [id], onDelete: Cascade)
   user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -190,8 +200,11 @@ model Task {
 }
 
 model TaskAssignee {
-  taskId String
-  userId String
+  taskId       String
+  userId       String
+  /// Quien hizo la asignación (para avisarle cuando la tarea se termine)
+  assignedById String?
+  assignedAt   DateTime @default(now())
 
   task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)

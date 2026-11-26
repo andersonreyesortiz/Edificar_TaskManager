@@ -16,6 +16,8 @@ export type BoardTask = {
   subtaskDone: number;
   minutes: number;
   running: boolean;
+  /** La persona actual es responsable de esta tarea */
+  mine: boolean;
   /** Valores de columnas personalizadas por id de columna */
   values: Record<string, ColumnValue>;
 };
