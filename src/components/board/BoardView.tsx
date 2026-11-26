@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import { ChevronDown, ChevronRight, ListTree, Pause, Play, Plus, Search, Trash2 } from "lucide-react";
 import type { TaskStatus } from "@prisma/client";
 import { STATUSES, formatMinutes } from "@/lib/constants";
@@ -33,6 +33,20 @@ export function BoardView(props: Props) {
   const [onlyMine, setOnlyMine] = useState(false);
   const [status, setStatus] = useState<TaskStatus | "">("");
   const [filters, setFilters] = useState<Filters>({});
+  // Vista personal: agrupar por los grupos del tablero o por estado (no mueve las tareas).
+  const [groupBy, setGroupBy] = useState<"groups" | "status">("groups");
+  const storeKey = `ritmo:groupBy:${props.boardId}`;
+  useEffect(() => {
+    try {
+      if (localStorage.getItem(storeKey) === "status") setGroupBy("status");
+    } catch {}
+  }, [storeKey]);
+  const changeGroupBy = (v: "groups" | "status") => {
+    setGroupBy(v);
+    try {
+      localStorage.setItem(storeKey, v);
+    } catch {}
+  };
 
   const tasks = useMemo(
     () =>
@@ -64,8 +78,22 @@ export function BoardView(props: Props) {
           Solo mis tareas
         </label>
         <FilterButton columns={props.columns} people={props.people} filters={filters} onChange={setFilters} />
+        {props.view === "table" && (
+          <div className="ml-auto flex items-center gap-1 rounded-lg border border-line bg-white p-0.5 text-sm" title="Cambia solo tu vista; no mueve las tareas">
+            <span className="px-2 text-xs text-muted">Agrupar por</span>
+            {(["groups", "status"] as const).map((v) => (
+              <button
+                key={v}
+                onClick={() => changeGroupBy(v)}
+                className={`rounded-md px-2.5 py-1 ${groupBy === v ? "bg-brand-700 text-white" : "text-ink hover:bg-canvas"}`}
+              >
+                {v === "groups" ? "Grupos" : "Estado"}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
-      {props.view === "table" ? <TableView {...props} tasks={tasks} /> : <KanbanView {...props} tasks={tasks} />}
+      {props.view === "table" ? <TableView {...props} tasks={tasks} groupBy={groupBy} /> : <KanbanView {...props} tasks={tasks} />}
     </div>
   );
 }
@@ -184,7 +212,13 @@ function GroupHeader({ group, count, minutes, collapsed, onToggle, canManage, ca
 const BUILTIN_WIDTH: Record<BuiltinKey, number> = { people: 128, status: 144, priority: 128, due: 144, time: 128 };
 const TYPE_WIDTH: Record<string, number> = { STATUS: 140, DROPDOWN: 180, PEOPLE: 120, TEXT: 180, LINK: 180, EMAIL: 190, PHONE: 140, NUMBER: 110, DATE: 130, CHECKBOX: 90, RATING: 120 };
 
-function TableView({ boardId, groups, tasks, people, canManage, canEdit, columns, hidden }: Props) {
+function TableView({ boardId, groups: boardGroups, tasks, people, canManage, canEdit, columns, hidden, groupBy }: Props & { groupBy: "groups" | "status" }) {
+  const byStatus = groupBy === "status";
+  // En la vista por estado, cada estado con tareas es un grupo "virtual".
+  const groups: BoardGroup[] = byStatus
+    ? STATUSES.filter((s) => tasks.some((t) => t.status === s.value)).map((s) => ({ id: `status:${s.value}`, name: s.label, color: s.color }))
+    : boardGroups;
+  const inGroup = (t: BoardTask, g: BoardGroup) => (byStatus ? `status:${t.status}` === g.id : t.groupId === g.id);
   const builtins = BUILTIN_COLUMNS.filter((b) => !hidden.includes(b.key));
   const minWidth = 300 + builtins.reduce((a, b) => a + BUILTIN_WIDTH[b.key], 0) + columns.reduce((a, c) => a + (TYPE_WIDTH[c.type] ?? 140), 0) + 44;
   const hasSummary = columns.some((c) => c.type === "NUMBER" || c.type === "STATUS" || c.type === "CHECKBOX");
@@ -205,7 +239,7 @@ function TableView({ boardId, groups, tasks, people, canManage, canEdit, columns
   return (
     <div className="space-y-6">
       {groups.map((g) => {
-        const rows = tasks.filter((t) => t.groupId === g.id);
+        const rows = tasks.filter((t) => inGroup(t, g));
         const minutes = rows.reduce((a, t) => a + t.minutes, 0);
         const done = rows.filter((t) => t.status === "DONE").length;
         return (
@@ -216,8 +250,8 @@ function TableView({ boardId, groups, tasks, people, canManage, canEdit, columns
               minutes={minutes}
               collapsed={!!collapsed[g.id]}
               onToggle={() => setCollapsed((c) => ({ ...c, [g.id]: !c[g.id] }))}
-              canManage={canManage}
-              canEdit={canEdit}
+              canManage={canManage && !byStatus}
+              canEdit={canEdit && !byStatus}
             />
             {!collapsed[g.id] && (
               <div className="card overflow-x-auto" style={{ borderLeft: `4px solid ${g.color}` }}>
@@ -292,14 +326,14 @@ function TableView({ boardId, groups, tasks, people, canManage, canEdit, columns
                     )}
                   </tbody>
                 </table>
-                {canEdit && <AddTaskRow boardId={boardId} groupId={g.id} />}
+                {canEdit && !byStatus && <AddTaskRow boardId={boardId} groupId={g.id} />}
                 {rows.length > 0 && <StatusBar tasks={rows} label={`${done} de ${rows.length} terminadas`} />}
               </div>
             )}
           </section>
         );
       })}
-      {canEdit && (
+      {canEdit && !byStatus && (
         <form
         onSubmit={(e) => {
           e.preventDefault();
