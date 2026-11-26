@@ -3,7 +3,7 @@ import { Lock } from "lucide-react";
 import type { Prisma } from "@prisma/client";
 import { requireUser } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
-import { visibleBoardsWhere } from "@/lib/access";
+import { visibleBoardsWhere, visiblePeopleWhere } from "@/lib/access";
 import { parseFilters } from "@/lib/reports";
 import { ActivityList } from "@/components/ActivityList";
 import { ExportMenu } from "@/components/ExportMenu";
@@ -23,7 +23,7 @@ export default async function ActivityPage({ searchParams }: { searchParams: Pro
   };
   const [boards, people, items, total] = await Promise.all([
     prisma.board.findMany({ where: visibleBoardsWhere(me), select: { id: true, name: true }, orderBy: { name: "asc" } }),
-    prisma.user.findMany({ select: { id: true, name: true, email: true }, orderBy: { name: "asc" } }),
+    prisma.user.findMany({ where: visiblePeopleWhere(me), select: { id: true, name: true, email: true }, orderBy: { name: "asc" } }),
     prisma.activity.findMany({
       where,
       orderBy: { createdAt: "desc" },

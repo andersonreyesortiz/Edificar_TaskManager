@@ -37,6 +37,13 @@ async function applyInvitation(userId: string, email: string, isNewUser: boolean
   }
   if (invite && !invite.acceptedAt) {
     await prisma.invitation.update({ where: { id: invite.id }, data: { acceptedAt: new Date() } });
+    if (invite.departmentId) {
+      await prisma.departmentMember.upsert({
+        where: { departmentId_userId: { departmentId: invite.departmentId, userId } },
+        create: { departmentId: invite.departmentId, userId },
+        update: {},
+      });
+    }
     if (invite.boardId) {
       await prisma.boardMember.upsert({
         where: { boardId_userId: { boardId: invite.boardId, userId } },

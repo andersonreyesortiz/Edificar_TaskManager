@@ -41,6 +41,8 @@ model User {
   active        Boolean   @default(true)
   createdAt     DateTime  @default(now())
 
+  departments    DepartmentMember[]
+
   accounts       Account[]
   sessions       Session[]
   boardsOwned    Board[]        @relation("BoardOwner")
@@ -101,11 +103,39 @@ model Invitation {
   role        Role      @default(GUEST)
   invitedById String
   boardId     String?
+  departmentId String?
   createdAt   DateTime  @default(now())
   acceptedAt  DateTime?
 
-  invitedBy User   @relation("Inviter", fields: [invitedById], references: [id], onDelete: Cascade)
-  board     Board? @relation(fields: [boardId], references: [id], onDelete: SetNull)
+  invitedBy  User        @relation("Inviter", fields: [invitedById], references: [id], onDelete: Cascade)
+  board      Board?      @relation(fields: [boardId], references: [id], onDelete: SetNull)
+  department Department? @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+}
+
+/// Departamento o equipo de la empresa. Sus tableros solo los ven quienes están invitados al tablero y los administradores del departamento.
+model Department {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  createdAt DateTime @default(now())
+
+  members     DepartmentMember[]
+  boards      Board[]
+  invitations Invitation[]
+}
+
+/// Pertenencia de una persona a un departamento. Una persona puede estar en varios.
+model DepartmentMember {
+  departmentId String
+  userId       String
+  /// Administra el departamento: ve todos sus tableros, invita gente y gestiona miembros
+  isAdmin      Boolean  @default(false)
+  addedAt      DateTime @default(now())
+
+  department Department @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([departmentId, userId])
+  @@index([userId])
 }
 
 // ---------- Dominio ----------
@@ -116,6 +146,7 @@ model Board {
   description String?
   color       String   @default("#0f766e")
   ownerId     String
+  departmentId String?
   archived    Boolean  @default(false)
   /// Columnas fijas que el dueño ocultó: people, status, priority, due, time
   hiddenColumns String[] @default([])
@@ -129,6 +160,7 @@ model Board {
   updatedAt   DateTime @updatedAt
 
   owner       User          @relation("BoardOwner", fields: [ownerId], references: [id])
+  department  Department?   @relation(fields: [departmentId], references: [id], onDelete: SetNull)
   members     BoardMember[]
   groups      Group[]
   columns     BoardColumn[]

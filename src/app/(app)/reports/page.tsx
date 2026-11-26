@@ -3,7 +3,7 @@ import { ExportMenu } from "@/components/ExportMenu";
 import { format, addDays } from "date-fns";
 import { requireUser } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
-import { visibleBoardsWhere } from "@/lib/access";
+import { visibleBoardsWhere, visiblePeopleWhere } from "@/lib/access";
 import { buildReport, parseFilters } from "@/lib/reports";
 import { formatMinutes } from "@/lib/constants";
 import { HoursOverTime, HoursRanking, StatusChart } from "@/components/reports/Charts";
@@ -16,7 +16,7 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
   const filters = parseFilters(sp);
   const [boards, people, report] = await Promise.all([
     prisma.board.findMany({ where: visibleBoardsWhere(me), select: { id: true, name: true }, orderBy: { name: "asc" } }),
-    prisma.user.findMany({ where: { active: true }, select: { id: true, name: true, email: true }, orderBy: { name: "asc" } }),
+    prisma.user.findMany({ where: { active: true, ...visiblePeopleWhere(me) }, select: { id: true, name: true, email: true }, orderBy: { name: "asc" } }),
     buildReport(me, filters),
   ]);
   const fromStr = format(filters.from, "yyyy-MM-dd");

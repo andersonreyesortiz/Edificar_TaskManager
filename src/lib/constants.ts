@@ -19,7 +19,7 @@ export const PRIORITIES: { value: Priority; label: string; color: string }[] = [
 ];
 
 export const ROLES: { value: Role; label: string; help: string }[] = [
-  { value: "ADMIN", label: "Administrador", help: "Ve todos los tableros y gestiona el equipo" },
+  { value: "ADMIN", label: "Superadministrador", help: "Ve todos los tableros y departamentos y gestiona el equipo" },
   { value: "MEMBER", label: "Miembro", help: "Crea tableros y trabaja en los suyos" },
   { value: "GUEST", label: "Invitado", help: "Solo ve los tableros a los que lo agregan" },
 ];

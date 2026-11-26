@@ -2,7 +2,7 @@ import type { TaskStatus, User } from "@prisma/client";
 import { addDays, format, startOfDay, startOfWeek } from "date-fns";
 import { es } from "date-fns/locale";
 import { prisma } from "@/lib/prisma";
-import { visibleBoardsWhere } from "@/lib/access";
+import { dashboardBoardsWhere } from "@/lib/access";
 
 /** Datos del resumen ejecutivo (dashboard). */
 
@@ -62,7 +62,7 @@ export async function buildDashboard(user: User, opts: { days: number; boardId?:
   const to = addDays(today, 1);
   const from = addDays(today, -(opts.days - 1));
   const weekEnd = addDays(today, 7);
-  const boardWhere = visibleBoardsWhere(user);
+  const boardWhere = dashboardBoardsWhere(user);
   const boardFilter = opts.boardId ? { id: opts.boardId } : {};
   const weeksFrom = startOfWeek(addDays(today, -7 * 11), { weekStartsOn: 1 });
 

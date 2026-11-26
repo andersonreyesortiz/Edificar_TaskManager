@@ -11,7 +11,7 @@ import { Modal } from "./Modal";
 type Col = { key: number; name: string; type: ColumnType };
 let seq = 0;
 
-export function NewBoardButton({ variant = "icon" }: { variant?: "icon" | "button" }) {
+export function NewBoardButton({ variant = "icon", departments = [] }: { variant?: "icon" | "button"; departments?: { id: string; name: string }[] }) {
   const [open, setOpen] = useState(false);
   const [template, setTemplate] = useState("blank");
   const [cols, setCols] = useState<Col[]>([]);
@@ -49,6 +49,16 @@ export function NewBoardButton({ variant = "icon" }: { variant?: "icon" | "butto
             <label className="label">Descripción (opcional)</label>
             <textarea name="description" rows={2} className="input" />
           </div>
+          {departments.length > 0 && (
+            <div>
+              <label className="label">Departamento</label>
+              <select name="departmentId" defaultValue={departments.length === 1 ? departments[0].id : ""} className="input">
+                {departments.length > 1 && <option value="">Sin departamento</option>}
+                {departments.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+              </select>
+              <p className="mt-1 text-xs text-muted">Los administradores de este departamento también podrán ver y gestionar el tablero.</p>
+            </div>
+          )}
 
           <div>
             <label className="label">Plantilla</label>

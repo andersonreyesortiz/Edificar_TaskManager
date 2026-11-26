@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { requireUser } from "@/lib/session";
+import { boardDepartmentChoices } from "@/lib/access";
+import { canSeeDashboard } from "@/lib/access";
 import { prisma } from "@/lib/prisma";
 import { visibleBoardsWhere } from "@/lib/access";
 import { Logo } from "@/components/Logo";
@@ -14,7 +16,7 @@ import { fmtDateTime, roleMeta } from "@/lib/constants";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const user = await requireUser();
-  const [boards, running, notifications, unread] = await Promise.all([
+  const [boards, running, notifications, unread, showDashboard] = await Promise.all([
     prisma.board.findMany({ where: visibleBoardsWhere(user), orderBy: { createdAt: "asc" }, select: { id: true, name: true, color: true } }),
     prisma.timeEntry.findFirst({ where: { userId: user.id, endedAt: null }, include: { task: { select: { id: true, title: true, boardId: true } } } }),
     prisma.notification.findMany({
@@ -24,6 +26,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       include: { actor: { select: { name: true, email: true, image: true } } },
     }),
     prisma.notification.count({ where: { userId: user.id, readAt: null } }),
+    canSeeDashboard(user),
   ]);
 
   return (
@@ -36,7 +39,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         </div>
         <nav className="space-y-0.5 px-3 text-sm">
           <NavLink href="/" icon="home">Inicio</NavLink>
-          <NavLink href="/dashboard" icon="dashboard">Resumen ejecutivo</NavLink>
+          {showDashboard && <NavLink href="/dashboard" icon="dashboard">Resumen ejecutivo</NavLink>}
           <NavLink href="/my-tasks" icon="check">Mis tareas</NavLink>
           <NavLink href="/reports" icon="chart">Reportes</NavLink>
           <NavLink href="/activity" icon="clock">Actividad</NavLink>
@@ -44,7 +47,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         </nav>
         <div className="mt-6 flex items-center justify-between px-5 text-xs font-semibold uppercase tracking-wide text-muted">
           Tableros
-          {user.role !== "GUEST" && <NewBoardButton />}
+          {user.role !== "GUEST" && <NewBoardButton departments={await boardDepartmentChoices(user)} />}
         </div>
         <div className="mt-2 flex-1 space-y-0.5 overflow-y-auto px-3 pb-4 text-sm">
           {boards.map((b) => (
@@ -72,7 +75,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             <Link href="/"><Logo size={24} /></Link>
           </div>
           <nav className="flex min-w-0 gap-1 overflow-x-auto text-sm md:hidden">
-            <Link className="btn-ghost shrink-0" href="/dashboard">Resumen</Link>
+            {showDashboard && <Link className="btn-ghost shrink-0" href="/dashboard">Resumen</Link>}
             <Link className="btn-ghost shrink-0" href="/my-tasks">Mis tareas</Link>
             <Link className="btn-ghost shrink-0" href="/reports">Reportes</Link>
             <Link className="btn-ghost shrink-0" href="/activity">Actividad</Link>

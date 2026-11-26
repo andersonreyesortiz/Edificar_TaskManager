@@ -2,11 +2,11 @@
 
 import Link from "next/link";
 import { useState, useTransition } from "react";
-import { Archive, Columns3, Rows3, UserPlus, X } from "lucide-react";
+import { Archive, Building2, Columns3, Rows3, UserPlus, X } from "lucide-react";
 import type { BoardRole } from "@prisma/client";
 import clsx from "clsx";
 import { BOARD_COLORS, formatMinutes } from "@/lib/constants";
-import { addBoardMember, archiveBoard, removeBoardMember, setBoardMemberRole, updateBoard } from "@/lib/actions";
+import { addBoardMember, archiveBoard, removeBoardMember, setBoardDepartment, setBoardMemberRole, updateBoard } from "@/lib/actions";
 import { Popover } from "@/components/Popover";
 import { ExportMenu } from "@/components/ExportMenu";
 import { Avatar } from "@/components/Avatar";
@@ -20,14 +20,21 @@ export function BoardHeader({
   isAdmin,
   allUsers,
   canManage,
+  department,
+  departmentOptions,
+  canUnsetDepartment,
   view,
   stats,
 }: {
   board: { id: string; name: string; description: string | null; color: string; ownerId: string; autoGroupByStatus: boolean };
   members: Person[];
   memberRoles: Record<string, BoardRole>;
-  /** Solo los administradores agregan, quitan o cambian permisos de miembros */
+  /** Superadministrador o administrador del departamento del tablero: agregan, quitan o cambian permisos de miembros */
   isAdmin: boolean;
+  department: { id: string; name: string } | null;
+  /** Departamentos a los que esta persona puede mover el tablero (vacío si no puede) */
+  departmentOptions: { id: string; name: string }[];
+  canUnsetDepartment: boolean;
   allUsers: Person[];
   canManage: boolean;
   view: "table" | "kanban";
@@ -91,6 +98,23 @@ export function BoardHeader({
             }}
             className="mt-1 w-full rounded-md bg-transparent px-1 text-sm text-muted outline-none focus:bg-white focus:ring-1 focus:ring-line"
           />
+          <div className="mt-1 flex items-center gap-1.5 px-1 text-xs text-muted">
+            <Building2 size={12} />
+            {departmentOptions.length ? (
+              <select
+                value={department?.id ?? ""}
+                onChange={(e) => start(() => setBoardDepartment(board.id, e.target.value || null))}
+                className="rounded border border-transparent bg-transparent py-0.5 pr-1 hover:border-line"
+                title="Departamento del tablero"
+              >
+                {(!department || canUnsetDepartment) && <option value="">Sin departamento</option>}
+                {department && !departmentOptions.some((d) => d.id === department.id) && <option value={department.id}>{department.name}</option>}
+                {departmentOptions.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+              </select>
+            ) : (
+              <span>{department ? department.name : "Sin departamento"}</span>
+            )}
+          </div>
         </div>
 
         <div className="flex items-center gap-2">
@@ -214,3 +238,4 @@ function ViewTab({ href, active, icon, children }: { href: string; active: boole
     </Link>
   );
 }
+

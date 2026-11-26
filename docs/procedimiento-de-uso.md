@@ -19,11 +19,14 @@ Aplica a todo el personal de Edificar y a terceros invitados (proveedores, consu
 
 | Rol | Quién | Puede |
 |---|---|---|
-| **Administrador** | Personas en la lista `ADMIN_EMAILS` o que otro administrador nombre | Invitar personas, dar y quitar acceso, nombrar miembros de tableros y sus permisos, ver todo el historial, descargar respaldos. |
+| **Superadministrador** | Personas en la lista `ADMIN_EMAILS` o que otro superadministrador nombre | Ver todos los tableros y departamentos, crear departamentos y nombrar a sus administradores, invitar personas, dar y quitar acceso, ver todo el historial, descargar respaldos. |
+| **Administrador de departamento** | Nombrado por un superadministrador (una persona puede estar en varios departamentos) | Ver y gestionar todos los tableros de los departamentos que administra, invitar personas a ellos, agregar o quitar miembros del departamento y de sus tableros, y ver su Resumen ejecutivo. |
 | **Dueño del tablero** | Quien crea el tablero | Todo lo del editor, más columnas, agrupar por estado, archivar el tablero y borrar grupos. |
 | **Editor** (de un tablero) | Asignado por un administrador | Crear, editar, asignar y mover tareas; editar columnas y valores. |
 | **Colaborador** (de un tablero) | Asignado por un administrador | En las tareas que tiene asignadas: cambiar el estado, registrar tiempo y comentar. No puede editar ni reasignar. |
 | **Invitado** | Personas externas | Solo ven los tableros a los que se les agrega. |
+
+**Privacidad:** cada persona solo ve los tableros donde es dueña o miembro (y los de los departamentos que administra). Reportes, actividad, exportaciones y la lista de personas se limitan a esos tableros. El Resumen ejecutivo lo ven los superadministradores, los administradores de departamento y los dueños o editores de algún tablero, cada uno con sus tableros.
 
 ## 4. Acceso
 
@@ -33,7 +36,7 @@ Aplica a todo el personal de Edificar y a terceros invitados (proveedores, consu
 
 ## 5. Planificación de un proyecto
 
-1. Crear un tablero por proyecto o frente de trabajo (**Nuevo tablero**), eligiendo la plantilla que corresponda (Proyecto de diseño u obra, Licitación, Seguimiento con terceros o En blanco).
+1. Crear un tablero por proyecto o frente de trabajo (**Nuevo tablero**), indicando su departamento y eligiendo la plantilla que corresponda (Proyecto de diseño u obra, Licitación, Seguimiento con terceros o En blanco).
 2. Organizar las tareas en grupos (fases, entregables o semanas).
 3. Para cada tarea definir: responsable(s), fecha límite, prioridad y, cuando aplique, estimado de horas y columnas propias del proyecto (fase, disciplina, costo, plano).
 4. El administrador agrega a los miembros del tablero con el permiso que les corresponde (Editor o Colaborador).

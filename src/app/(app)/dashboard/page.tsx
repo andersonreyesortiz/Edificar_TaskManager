@@ -3,7 +3,8 @@ import { AlertTriangle, Ban, CheckCircle2, Clock3, FolderKanban, ListTodo } from
 import { addDays, format } from "date-fns";
 import { requireUser } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
-import { visibleBoardsWhere } from "@/lib/access";
+import { canSeeDashboard, dashboardBoardsWhere } from "@/lib/access";
+import { redirect } from "next/navigation";
 import { buildDashboard, STATUS_ORDER, type PersonRow, type ProjectRow } from "@/lib/dashboard";
 import { fmtDate, formatMinutes, statusMeta } from "@/lib/constants";
 import type { TaskStatus } from "@prisma/client";
@@ -15,10 +16,11 @@ type SP = { range?: string; board?: string };
 
 export default async function DashboardPage({ searchParams }: { searchParams: Promise<SP> }) {
   const me = await requireUser();
+  if (!(await canSeeDashboard(me))) redirect("/");
   const sp = await searchParams;
   const days = [7, 30, 90].includes(Number(sp.range)) ? Number(sp.range) : 30;
   const [boards, d] = await Promise.all([
-    prisma.board.findMany({ where: visibleBoardsWhere(me), select: { id: true, name: true }, orderBy: { name: "asc" } }),
+    prisma.board.findMany({ where: dashboardBoardsWhere(me), select: { id: true, name: true }, orderBy: { name: "asc" } }),
     buildDashboard(me, { days, boardId: sp.board || undefined }),
   ]);
   const qs = (extra: Record<string, string>) => {
@@ -35,7 +37,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
         <div>
           <h1 className="text-2xl font-semibold">Resumen ejecutivo</h1>
           <p className="mt-1 text-sm text-muted">
-            Cómo van los proyectos y la carga del equipo. Periodo: {periodText}.
+            Cómo van los proyectos que administras o editas y la carga de su equipo. Periodo: {periodText}.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2 print:hidden">

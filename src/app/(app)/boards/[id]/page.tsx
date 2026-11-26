@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/session";
-import { boardLevel, canAccessBoard } from "@/lib/access";
+import { adminDepartmentIds, boardLevel, canAccessBoard, canManageMembers, isSuperAdmin } from "@/lib/access";
 import { BoardView } from "@/components/board/BoardView";
 import { BoardHeader } from "@/components/board/BoardHeader";
 import { TaskPanel } from "@/components/task/TaskPanel";
@@ -29,11 +29,13 @@ export default async function BoardPage({
       members: { include: { user: { select: personSelect } }, orderBy: { addedAt: "asc" } },
       groups: { orderBy: { position: "asc" } },
       columns: { orderBy: [{ position: "asc" }, { createdAt: "asc" }] },
+      department: { select: { id: true, name: true } },
     },
   });
   if (!board || board.archived) notFound();
 
-  const [rawTasks, subtasks, timeByTask, running, allUsers] = await Promise.all([
+  const manageMembers = await canManageMembers(user, id);
+  const [rawTasks, subtasks, timeByTask, running, allUsers, deptOptions] = await Promise.all([
     prisma.task.findMany({
       where: { boardId: id, parentId: null },
       orderBy: [{ position: "asc" }, { createdAt: "asc" }],
@@ -46,7 +48,11 @@ export default async function BoardPage({
     }),
     prisma.timeEntry.groupBy({ by: ["taskId"], where: { task: { boardId: id } }, _sum: { minutes: true } }),
     prisma.timeEntry.findMany({ where: { userId: user.id, endedAt: null }, select: { taskId: true } }),
-    prisma.user.findMany({ where: { active: true }, select: personSelect, orderBy: { name: "asc" } }),
+    // La lista de personas para agregar solo la reciben quienes pueden gestionar miembros.
+    manageMembers ? prisma.user.findMany({ where: { active: true }, select: personSelect, orderBy: { name: "asc" } }) : Promise.resolve([]),
+    adminDepartmentIds(user).then((ids) =>
+      prisma.department.findMany({ where: { id: { in: ids } }, select: { id: true, name: true }, orderBy: { name: "asc" } }),
+    ),
   ]);
 
   const minutesOf = new Map(timeByTask.map((t) => [t.taskId, t._sum.minutes ?? 0]));
@@ -111,9 +117,12 @@ export default async function BoardPage({
         board={{ id: board.id, name: board.name, description: board.description, color: board.color, ownerId: board.ownerId, autoGroupByStatus: board.autoGroupByStatus }}
         members={people}
         memberRoles={memberRoles}
-        isAdmin={user.role === "ADMIN"}
+        isAdmin={manageMembers}
         allUsers={allUsers}
         canManage={canManage}
+        department={board.department}
+        departmentOptions={isSuperAdmin(user) || canManage ? deptOptions : []}
+        canUnsetDepartment={isSuperAdmin(user)}
         view={currentView}
         stats={{
           total: tasks.length,

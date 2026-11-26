@@ -6,7 +6,7 @@ import { z } from "zod";
 import type { BoardRole, ColumnType, Prisma, Priority, Role, TaskStatus, User } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireAdmin, requireUser } from "@/lib/session";
-import { assertBoardAccess, assertBoardEdit, assertTaskAccess, assertTaskEdit, assertTaskProgress, canManageBoard } from "@/lib/access";
+import { adminDepartmentIds, assertManageMembers, canManagePeople, isSuperAdmin, assertBoardAccess, assertBoardEdit, assertTaskAccess, assertTaskEdit, assertTaskProgress, canManageBoard } from "@/lib/access";
 import { BOARD_COLORS, priorityMeta, statusMeta } from "@/lib/constants";
 import { AuthError } from "next-auth";
 import { notify, sendInvitationEmail } from "@/lib/notify";
@@ -104,6 +104,12 @@ export async function createBoard(formData: FormData) {
     cols = [];
   }
   const hidden = formData.getAll("hide").map(String).filter((k) => BUILTIN_COLUMNS.some((b) => b.key === k));
+  // Departamento del tablero: uno de los de la persona (el superadministrador puede elegir cualquiera).
+  const myDepts = isSuperAdmin(user)
+    ? (await prisma.department.findMany({ select: { id: true } })).map((d) => d.id)
+    : (await prisma.departmentMember.findMany({ where: { userId: user.id }, select: { departmentId: true } })).map((d) => d.departmentId);
+  const askedDept = str(formData.get("departmentId"));
+  const departmentId = askedDept && myDepts.includes(askedDept) ? askedDept : !askedDept && !isSuperAdmin(user) && myDepts.length === 1 ? myDepts[0] : null;
   const count = await prisma.board.count();
   const board = await prisma.board.create({
     data: {
@@ -111,6 +117,7 @@ export async function createBoard(formData: FormData) {
       description,
       color: BOARD_COLORS[count % BOARD_COLORS.length],
       ownerId: user.id,
+      departmentId,
       hiddenColumns: hidden,
       members: { create: { userId: user.id } },
       columns: {
@@ -144,7 +151,8 @@ export async function archiveBoard(boardId: string) {
 }
 
 export async function addBoardMember(boardId: string, userId: string, role: BoardRole = "COLLABORATOR") {
-  const user = await requireAdmin();
+  const user = await requireUser();
+  await assertManageMembers(user, boardId);
   if (role !== "EDITOR" && role !== "COLLABORATOR") throw new Error("Permiso no válido.");
   const member = await prisma.user.findUniqueOrThrow({ where: { id: userId } });
   await prisma.boardMember.upsert({
@@ -164,7 +172,8 @@ export async function addBoardMember(boardId: string, userId: string, role: Boar
 }
 
 export async function setBoardMemberRole(boardId: string, userId: string, role: BoardRole) {
-  const user = await requireAdmin();
+  const user = await requireUser();
+  await assertManageMembers(user, boardId);
   if (role !== "EDITOR" && role !== "COLLABORATOR") throw new Error("Permiso no válido.");
   const m = await prisma.boardMember.update({ where: { boardId_userId: { boardId, userId } }, data: { role }, include: { user: true } });
   await log(user, "board.member_role", `cambió el permiso de ${m.user.name ?? m.user.email} a ${role === "EDITOR" ? "Editor" : "Colaborador"}`, { boardId });
@@ -199,7 +208,8 @@ async function placeInStatusGroup(boardId: string, t: { id: string; status: Task
 }
 
 export async function removeBoardMember(boardId: string, userId: string) {
-  const user = await requireAdmin();
+  const user = await requireUser();
+  await assertManageMembers(user, boardId);
   const member = await prisma.user.findUniqueOrThrow({ where: { id: userId } });
   await prisma.boardMember.deleteMany({ where: { boardId, userId } });
   await log(user, "board.member_removed", `quitó a ${member.name ?? member.email} del tablero`, { boardId });
@@ -722,24 +732,36 @@ export async function deleteTimeEntry(entryId: string) {
 // ---------- equipo e invitaciones ----------
 
 export async function inviteUser(formData: FormData) {
-  const admin = await requireAdmin();
+  const admin = await requireUser();
+  if (!(await canManagePeople(admin))) throw new Error("Solo un administrador puede invitar personas.");
   const email = str(formData.get("email")).toLowerCase();
   const role = (str(formData.get("role")) || "GUEST") as Role;
   const boardId = str(formData.get("boardId")) || null;
+  const departmentId = str(formData.get("departmentId")) || null;
   if (!z.string().email().safeParse(email).success) throw new Error("Correo no válido.");
-  if (boardId) await assertBoardAccess(admin, boardId);
+  if (role === "ADMIN" && !isSuperAdmin(admin)) throw new Error("Solo el superadministrador puede invitar administradores.");
+  if (boardId) await assertManageMembers(admin, boardId);
+  if (departmentId && !(await adminDepartmentIds(admin)).includes(departmentId)) throw new Error("Solo puedes invitar a departamentos que administras.");
+  if (!isSuperAdmin(admin) && !departmentId && !boardId) throw new Error("Elige el departamento o el tablero al que invitas a la persona.");
 
   const existing = await prisma.user.findUnique({ where: { email } });
   if (existing) {
-    // Ya tiene cuenta: solo se agrega al tablero.
+    // Ya tiene cuenta: se agrega al departamento y al tablero.
+    if (departmentId) {
+      await prisma.departmentMember.upsert({
+        where: { departmentId_userId: { departmentId, userId: existing.id } },
+        create: { departmentId, userId: existing.id },
+        update: {},
+      });
+    }
     if (boardId) await addBoardMember(boardId, existing.id);
     revalidatePath("/team");
     return { emailed: false, existing: true };
   }
   await prisma.invitation.upsert({
     where: { email },
-    create: { email, role, boardId, invitedById: admin.id },
-    update: { role, boardId, invitedById: admin.id, acceptedAt: null },
+    create: { email, role, boardId, departmentId, invitedById: admin.id },
+    update: { role, boardId, departmentId, invitedById: admin.id, acceptedAt: null },
   });
   await log(admin, "team.invited", `invitó a ${email}`, { boardId });
   const board = boardId ? await prisma.board.findUnique({ where: { id: boardId }, select: { name: true } }) : null;
@@ -749,7 +771,13 @@ export async function inviteUser(formData: FormData) {
 }
 
 export async function revokeInvitation(id: string) {
-  await requireAdmin();
+  const user = await requireUser();
+  const inv = await prisma.invitation.findUniqueOrThrow({ where: { id } });
+  const allowed =
+    isSuperAdmin(user) ||
+    inv.invitedById === user.id ||
+    (!!inv.departmentId && (await adminDepartmentIds(user)).includes(inv.departmentId));
+  if (!allowed) throw new Error("No puedes anular esta invitación.");
   await prisma.invitation.delete({ where: { id } });
   revalidatePath("/team");
 }
@@ -766,6 +794,79 @@ export async function setUserActive(userId: string, active: boolean) {
   if (userId === admin.id) throw new Error("No puedes desactivarte a ti mismo.");
   await prisma.user.update({ where: { id: userId }, data: { active } });
   revalidatePath("/team");
+}
+
+// ---------- departamentos ----------
+
+export async function createDepartment(formData: FormData) {
+  const admin = await requireAdmin();
+  const name = str(formData.get("name")).slice(0, 80);
+  if (!name) throw new Error("Escribe el nombre del departamento.");
+  if (await prisma.department.findUnique({ where: { name } })) throw new Error("Ya existe un departamento con ese nombre.");
+  await prisma.department.create({ data: { name } });
+  await log(admin, "department.created", `creó el departamento «${name}»`, {});
+  revalidatePath("/team");
+}
+
+export async function renameDepartment(id: string, name: string) {
+  const admin = await requireAdmin();
+  const n = name.trim().slice(0, 80);
+  if (!n) return;
+  const d = await prisma.department.update({ where: { id }, data: { name: n } });
+  await log(admin, "department.renamed", `renombró un departamento a «${d.name}»`, {});
+  revalidatePath("/team");
+}
+
+export async function deleteDepartment(id: string) {
+  const admin = await requireAdmin();
+  const d = await prisma.department.findUniqueOrThrow({ where: { id }, include: { _count: { select: { boards: true } } } });
+  if (d._count.boards) throw new Error("El departamento tiene tableros. Muévelos a otro departamento antes de eliminarlo.");
+  await prisma.department.delete({ where: { id } });
+  await log(admin, "department.deleted", `eliminó el departamento «${d.name}»`, {});
+  revalidatePath("/team");
+}
+
+/**
+ * Agrega o quita a una persona de un departamento, o cambia si lo administra.
+ * Superadministrador: todo. Administrador del departamento: agrega o quita miembros (no nombra administradores).
+ */
+export async function setDepartmentMember(departmentId: string, userId: string, state: "none" | "member" | "admin") {
+  const user = await requireUser();
+  const mine = await adminDepartmentIds(user);
+  if (!mine.includes(departmentId)) throw new Error("Solo puedes cambiar los miembros de los departamentos que administras.");
+  const current = await prisma.departmentMember.findUnique({ where: { departmentId_userId: { departmentId, userId } } });
+  if (!isSuperAdmin(user) && (state === "admin" || current?.isAdmin)) throw new Error("Solo el superadministrador nombra o quita administradores de departamento.");
+  const [dept, person] = await Promise.all([
+    prisma.department.findUniqueOrThrow({ where: { id: departmentId } }),
+    prisma.user.findUniqueOrThrow({ where: { id: userId } }),
+  ]);
+  const who = person.name ?? person.email;
+  if (state === "none") {
+    await prisma.departmentMember.deleteMany({ where: { departmentId, userId } });
+    await log(user, "department.member_removed", `quitó a ${who} del departamento «${dept.name}»`, {});
+  } else {
+    await prisma.departmentMember.upsert({
+      where: { departmentId_userId: { departmentId, userId } },
+      create: { departmentId, userId, isAdmin: state === "admin" },
+      update: { isAdmin: state === "admin" },
+    });
+    await log(user, "department.member_set", `puso a ${who} como ${state === "admin" ? "administrador" : "miembro"} del departamento «${dept.name}»`, {});
+  }
+  revalidatePath("/team");
+  revalidatePath("/", "layout");
+}
+
+/** Cambia el departamento de un tablero (superadministrador, o quien administra el tablero y el departamento destino). */
+export async function setBoardDepartment(boardId: string, departmentId: string | null) {
+  const user = await requireUser();
+  if (!isSuperAdmin(user)) {
+    if (!(await canManageBoard(user, boardId))) throw new Error("No puedes cambiar el departamento de este tablero.");
+    if (!departmentId || !(await adminDepartmentIds(user)).includes(departmentId)) throw new Error("Solo puedes mover el tablero a un departamento que administras.");
+  }
+  const dept = departmentId ? await prisma.department.findUniqueOrThrow({ where: { id: departmentId } }) : null;
+  await prisma.board.update({ where: { id: boardId }, data: { departmentId } });
+  await log(user, "board.department", dept ? `asignó el tablero al departamento «${dept.name}»` : "quitó el departamento del tablero", { boardId });
+  refresh(boardId);
 }
 
 export async function updateProfileName(formData: FormData) {

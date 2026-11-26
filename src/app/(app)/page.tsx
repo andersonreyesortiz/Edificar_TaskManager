@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { startOfWeek } from "date-fns";
 import { requireUser } from "@/lib/session";
+import { boardDepartmentChoices } from "@/lib/access";
 import { prisma } from "@/lib/prisma";
 import { visibleBoardsWhere } from "@/lib/access";
 import { myTasks } from "@/lib/queries";
@@ -62,7 +63,7 @@ export default async function HomePage() {
 
       <div className="mt-10 flex items-center justify-between">
         <h2 className="text-lg font-semibold">Tableros</h2>
-        {user.role !== "GUEST" && <NewBoardButton variant="button" />}
+        {user.role !== "GUEST" && <NewBoardButton variant="button" departments={await boardDepartmentChoices(user)} />}
       </div>
       <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {boards.map((b) => {
