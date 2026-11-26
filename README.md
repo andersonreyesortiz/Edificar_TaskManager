@@ -29,7 +29,7 @@ Next.js 15 (App Router, server actions) · TypeScript · PostgreSQL + Prisma · 
 ## Desarrollo local
 
 ```bash
-cp .env.example .env        # y completa DATABASE_URL, DIRECT_URL, AUTH_SECRET
+cp .env.example .env        # y completa DATABASE_URL, DATABASE_URL_UNPOOLED, AUTH_SECRET
 # para probar sin Google: AUTH_DEV_LOGIN="true"
 npm install
 npx prisma migrate dev
