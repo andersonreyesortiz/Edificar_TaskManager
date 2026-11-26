@@ -251,11 +251,16 @@ model Activity {
   userId    String
   action    String
   detail    String?
+  /// Copia del nombre del tablero y de la tarea al momento del registro (se conserva aunque se borren).
+  boardName String?
+  taskTitle String?
   createdAt DateTime @default(now())
 
-  board Board? @relation(fields: [boardId], references: [id], onDelete: Cascade)
-  task  Task?  @relation(fields: [taskId], references: [id], onDelete: Cascade)
-  user  User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // El historial no se borra: si se borra la tarea o el tablero, solo se suelta el vínculo.
+  // La base de datos además impide editar o borrar registros (ver migración audit_log).
+  board Board? @relation(fields: [boardId], references: [id], onDelete: SetNull)
+  task  Task?  @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  user  User   @relation(fields: [userId], references: [id], onDelete: Restrict)
 
   @@index([boardId, createdAt])
   @@index([taskId, createdAt])

@@ -8,6 +8,7 @@ import clsx from "clsx";
 import { BOARD_COLORS, formatMinutes } from "@/lib/constants";
 import { addBoardMember, archiveBoard, removeBoardMember, setAutoGroupByStatus, setBoardMemberRole, updateBoard } from "@/lib/actions";
 import { Popover } from "@/components/Popover";
+import { ExportMenu } from "@/components/ExportMenu";
 import { Avatar } from "@/components/Avatar";
 import { AvatarStack } from "./cells";
 import type { Person } from "./types";
@@ -93,6 +94,7 @@ export function BoardHeader({
         </div>
 
         <div className="flex items-center gap-2">
+          <ExportMenu kind="tareas" query={{ board: board.id }} />
           <Popover
             align="right"
             width={280}

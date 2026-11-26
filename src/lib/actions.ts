@@ -15,9 +15,32 @@ import { emailProviderId, signIn, signOut } from "@/auth";
 
 // ---------- utilidades ----------
 
-async function log(user: User, action: string, detail: string, opts: { boardId?: string | null; taskId?: string | null }) {
+/**
+ * Guarda una entrada en el historial de actividad. El historial no se puede editar ni borrar
+ * (lo impide la base de datos), y guarda una copia del nombre del tablero y de la tarea.
+ */
+async function log(
+  user: User,
+  action: string,
+  detail: string,
+  opts: { boardId?: string | null; taskId?: string | null; boardName?: string; taskTitle?: string },
+) {
+  const boardId = opts.boardId ?? null;
+  const taskId = opts.taskId ?? null;
+  const [board, task] = await Promise.all([
+    opts.boardName || !boardId ? null : prisma.board.findUnique({ where: { id: boardId }, select: { name: true } }),
+    opts.taskTitle || !taskId ? null : prisma.task.findUnique({ where: { id: taskId }, select: { title: true } }),
+  ]);
   await prisma.activity.create({
-    data: { userId: user.id, action, detail, boardId: opts.boardId ?? null, taskId: opts.taskId ?? null },
+    data: {
+      userId: user.id,
+      action,
+      detail,
+      boardId,
+      taskId,
+      boardName: opts.boardName ?? board?.name ?? null,
+      taskTitle: opts.taskTitle ?? task?.title ?? null,
+    },
   });
 }
 
@@ -212,8 +235,13 @@ export async function deleteGroup(groupId: string) {
   const user = await requireUser();
   const g = await prisma.group.findUniqueOrThrow({ where: { id: groupId } });
   if (!(await canManageBoard(user, g.boardId))) throw new Error("Solo el dueño del tablero puede borrar grupos.");
+  const [tasks, time] = await Promise.all([
+    prisma.task.count({ where: { groupId } }),
+    prisma.timeEntry.aggregate({ where: { task: { OR: [{ groupId }, { parent: { groupId } }] } }, _sum: { minutes: true }, _count: true }),
+  ]);
   await prisma.group.delete({ where: { id: groupId } });
-  await log(user, "group.deleted", `borró el grupo «${g.name}» y sus tareas`, { boardId: g.boardId });
+  const extra = time._count ? `, con ${time._count} registros de tiempo (${time._sum.minutes ?? 0} min)` : "";
+  await log(user, "group.deleted", `borró el grupo «${g.name}» y sus ${tasks} tareas${extra}`, { boardId: g.boardId });
   refresh(g.boardId);
 }
 
@@ -555,8 +583,16 @@ export async function deleteTask(taskId: string) {
   const user = await requireUser();
   const t = await assertTaskEdit(user, taskId);
   const task = await prisma.task.findUniqueOrThrow({ where: { id: taskId } });
+  // Deja constancia del tiempo registrado que se pierde con la tarea (incluye subtareas).
+  const time = await prisma.timeEntry.aggregate({
+    where: { OR: [{ taskId }, { task: { parentId: taskId } }] },
+    _sum: { minutes: true },
+    _count: true,
+  });
   await prisma.task.delete({ where: { id: taskId } });
-  await log(user, "task.deleted", `borró ${task.parentId ? "la subtarea" : "la tarea"} «${t.title}»`, {
+  const mins = time._sum.minutes ?? 0;
+  const extra = time._count ? ` (tenía ${time._count} registro${time._count === 1 ? "" : "s"} de tiempo, ${mins} min en total)` : "";
+  await log(user, "task.deleted", `borró ${task.parentId ? "la subtarea" : "la tarea"} «${t.title}»${extra}`, {
     boardId: t.boardId,
     taskId: task.parentId,
   });

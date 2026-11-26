@@ -14,7 +14,11 @@ const daysAgo = (n: number, hour = 9) => {
 };
 
 async function main() {
-  await prisma.activity.deleteMany();
+  // El historial está protegido en la base de datos; para los datos de prueba se permite vaciarlo.
+  await prisma.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT set_config('edificar.audit_override', 'on', true)`;
+    await tx.activity.deleteMany();
+  });
   await prisma.timeEntry.deleteMany();
   await prisma.notification.deleteMany();
   await prisma.comment.deleteMany();

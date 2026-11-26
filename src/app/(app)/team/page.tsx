@@ -2,7 +2,8 @@ import { headers } from "next/headers";
 import { requireUser } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
 import { visibleBoardsWhere } from "@/lib/access";
-import { roleMeta } from "@/lib/constants";
+import { DatabaseBackup, Download } from "lucide-react";
+import { fmtDateTime, roleMeta } from "@/lib/constants";
 import { Avatar } from "@/components/Avatar";
 import { InviteForm, InviteLink, ProfileName, RevokeButton, RoleSelect, ActiveToggle } from "./parts";
 
@@ -13,10 +14,13 @@ export default async function TeamPage({ searchParams }: { searchParams: Promise
   const origin = process.env.APP_URL ?? `${h.get("x-forwarded-proto") ?? "http"}://${h.get("host")}`;
   const isAdmin = me.role === "ADMIN";
 
-  const [users, invitations, boards] = await Promise.all([
+  const [users, invitations, boards, backups] = await Promise.all([
     prisma.user.findMany({ orderBy: [{ active: "desc" }, { name: "asc" }], include: { _count: { select: { assignments: true } } } }),
     prisma.invitation.findMany({ where: { acceptedAt: null }, orderBy: { createdAt: "desc" }, include: { invitedBy: true, board: true } }),
     prisma.board.findMany({ where: visibleBoardsWhere(me), select: { id: true, name: true }, orderBy: { name: "asc" } }),
+    isAdmin
+      ? prisma.activity.findMany({ where: { action: "backup.downloaded" }, orderBy: { createdAt: "desc" }, take: 5, include: { user: true } })
+      : Promise.resolve([]),
   ]);
 
   return (
@@ -58,6 +62,26 @@ export default async function TeamPage({ searchParams }: { searchParams: Promise
               </li>
             ))}
           </ul>
+        </section>
+      )}
+
+      {isAdmin && (
+        <section className="card mt-6 p-4">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div className="max-w-xl">
+              <h2 className="flex items-center gap-2 font-semibold"><DatabaseBackup size={16} className="text-[#00A0E3]" /> Respaldo de datos</h2>
+              <p className="mt-1 text-sm text-muted">
+                Descarga una copia completa de tableros, tareas, tiempos, comentarios e historial. Guárdala en el Drive de la empresa
+                al menos una vez por semana. Cada descarga queda registrada en el historial.
+              </p>
+            </div>
+            <a href="/api/backup" className="btn-primary inline-flex items-center gap-2"><Download size={14} /> Descargar respaldo</a>
+          </div>
+          <p className="mt-3 text-xs text-muted">
+            {backups.length
+              ? <>Últimos respaldos: {backups.map((b) => `${fmtDateTime(b.createdAt)} (${b.user.name ?? b.user.email})`).join(" · ")}</>
+              : "Todavía no se ha descargado ningún respaldo."}
+          </p>
         </section>
       )}
 

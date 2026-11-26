@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Download } from "lucide-react";
+import { ExportMenu } from "@/components/ExportMenu";
 import { format, addDays } from "date-fns";
 import { requireUser } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
@@ -38,7 +38,10 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
           <h1 className="text-2xl font-semibold">Reportes</h1>
           <p className="mt-1 text-sm text-muted">Tiempo invertido y avance de tareas del {format(filters.from, "dd/MM/yyyy")} al {format(addDays(filters.to, -1), "dd/MM/yyyy")}.</p>
         </div>
-        <a href={`/api/export?${exportQs}`} className="btn-outline"><Download size={14} /> Descargar tiempos (CSV)</a>
+        <div className="flex gap-2">
+          <ExportMenu kind="tiempos" label="Tiempos" query={Object.fromEntries(exportQs)} />
+          <ExportMenu kind="tareas" label="Tareas" query={{ board: filters.boardId, user: filters.userId }} />
+        </div>
       </div>
 
       <div className="mt-6 flex flex-wrap items-center gap-2">

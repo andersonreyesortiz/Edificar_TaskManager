@@ -10,6 +10,7 @@ type Item = {
   boardId: string | null;
   user: { name: string | null; email: string; image: string | null };
   board: { name: string; color: string } | null;
+  boardName?: string | null;
 };
 
 export function ActivityList({ items, showBoard = true }: { items: Item[]; showBoard?: boolean }) {
@@ -26,6 +27,7 @@ export function ActivityList({ items, showBoard = true }: { items: Item[]; showB
                 <span className="font-medium">{a.user.name ?? a.user.email}</span> {a.detail}
               </p>
               <p className="mt-0.5 flex items-center gap-2 text-xs text-muted">
+                {showBoard && !a.board && a.boardName && <span>{a.boardName}</span>}
                 {showBoard && a.board && (
                   <span className="inline-flex items-center gap-1">
                     <span className="h-2 w-2 rounded-sm" style={{ background: a.board.color }} />
