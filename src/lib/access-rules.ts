@@ -20,10 +20,9 @@ export function isCompanyEmail(email: string) {
   return companyDomains().includes(domain);
 }
 
-/** Rol que recibe una persona nueva según su correo (si no tiene invitación). */
+/** Rol que recibe una persona nueva sin invitación: solo los ADMIN_EMAILS entran sin ser invitados. */
 export function defaultRoleFor(email: string): Role | null {
   const e = email.toLowerCase();
   if (adminEmails().includes(e)) return "ADMIN";
-  if (isCompanyEmail(e)) return "MEMBER";
   return null;
 }

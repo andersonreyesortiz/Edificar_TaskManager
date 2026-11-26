@@ -21,7 +21,7 @@ Gestor de tareas para equipos: tableros, tareas y subtareas, responsables, regis
 | Miembro | Crear tableros, invitar, trabajar en los tableros donde está |
 | Invitado | Solo ver y trabajar en los tableros a los que lo agregan |
 
-Quien entra con un correo de `ALLOWED_DOMAINS` queda como Miembro; los correos de `ADMIN_EMAILS` quedan como Administrador. Cualquier otra persona necesita una invitación (desde **Equipo**), y puede entrar con su cuenta de Google si la tiene, o con un enlace por correo si se configura Resend.
+Los correos de `ADMIN_EMAILS` entran como Administrador. Cualquier otra persona, incluso de la empresa, necesita una invitación de un administrador (desde **Equipo**, eligiendo Miembro o Invitado), y puede entrar con su cuenta de Google si la tiene, o con un enlace por correo si se configura Resend.
 
 ## Stack
 

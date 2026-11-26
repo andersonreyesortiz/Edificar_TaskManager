@@ -9,7 +9,7 @@ import { defaultRoleFor } from "@/lib/access-rules";
 
 /**
  * Decide si un correo puede entrar:
- *  - correos de los dominios de la empresa (ALLOWED_DOMAINS)
+ *  (los correos de la empresa también necesitan invitación)
  *  - correos de administradores (ADMIN_EMAILS)
  *  - cualquier correo con invitación
  *  - usuarios que ya existen y siguen activos

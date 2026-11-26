@@ -2,7 +2,6 @@ import { headers } from "next/headers";
 import { requireUser } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
 import { visibleBoardsWhere } from "@/lib/access";
-import { companyDomains } from "@/lib/access-rules";
 import { roleMeta } from "@/lib/constants";
 import { Avatar } from "@/components/Avatar";
 import { InviteForm, InviteLink, ProfileName, RevokeButton, RoleSelect, ActiveToggle } from "./parts";
@@ -19,16 +18,13 @@ export default async function TeamPage({ searchParams }: { searchParams: Promise
     prisma.invitation.findMany({ where: { acceptedAt: null }, orderBy: { createdAt: "desc" }, include: { invitedBy: true, board: true } }),
     prisma.board.findMany({ where: visibleBoardsWhere(me), select: { id: true, name: true }, orderBy: { name: "asc" } }),
   ]);
-  const domains = companyDomains();
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-8 md:px-8">
       <h1 className="text-2xl font-semibold">Equipo</h1>
       <p className="mt-1 text-sm text-muted">
-        {domains.length > 0 ? (
-          <>Cualquier persona con correo <b>@{domains.join(", @")}</b> puede entrar con Google. </>
-        ) : null}
-        {isAdmin ? "Para alguien de otra empresa, envíale una invitación." : "Solo los administradores pueden invitar personas o agregarlas a tableros."}
+        Para entrar a la app, toda persona necesita una invitación de un administrador (también las de la empresa).{" "}
+        {isAdmin ? "Elige «Miembro» para la gente de la empresa e «Invitado» para externos." : "Solo los administradores pueden invitar personas o agregarlas a tableros."}
       </p>
 
       <section className="card mt-6 p-4">
