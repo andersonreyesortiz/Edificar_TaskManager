@@ -41,7 +41,7 @@ Con los datos de ejemplo, entra en el acceso de prueba con `admin@edificar.com` 
 
 ## Despliegue en Vercel + Neon
 
-1. **Neon**: crea un proyecto y una base `ritmo`. Copia la cadena *pooled* a `DATABASE_URL` y la directa a `DIRECT_URL`.
+1. **Neon**: crea un proyecto y una base `ritmo`. Lo más fácil es crearla desde Vercel (Infrastructure → Integrations → Create Database → Neon), que agrega `DATABASE_URL` y `DATABASE_URL_UNPOOLED` al proyecto.
 2. **Google**: en Google Cloud Console crea un cliente OAuth de tipo "Aplicación web".
    - Orígenes autorizados: `https://TU-APP.vercel.app`
    - URI de redirección: `https://TU-APP.vercel.app/api/auth/callback/google`
