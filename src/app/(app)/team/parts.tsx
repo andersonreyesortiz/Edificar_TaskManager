@@ -46,17 +46,19 @@ export function InviteForm({ boards, departments, defaultBoard, isAdmin }: { boa
           ))}
         </select>
       </div>
-      <div>
-        <label className="label">Departamento</label>
-        <select name="departmentId" defaultValue={departments.length === 1 && !isAdmin ? departments[0].id : ""} className="input">
-          {(isAdmin || departments.length !== 1) && <option value="">{isAdmin ? "Ninguno" : "Elige…"}</option>}
-          {departments.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
-        </select>
-      </div>
+      {(isAdmin || departments.length > 0) && (
+        <div>
+          <label className="label">Departamento</label>
+          <select name="departmentId" defaultValue={departments.length === 1 && !isAdmin ? departments[0].id : ""} className="input">
+            {(isAdmin || departments.length !== 1) && <option value="">{isAdmin ? "Ninguno" : "Elige…"}</option>}
+            {departments.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+          </select>
+        </div>
+      )}
       <div>
         <label className="label">Agregar al tablero</label>
-        <select name="boardId" defaultValue={defaultBoard ?? ""} className="input">
-          <option value="">Ninguno</option>
+        <select name="boardId" defaultValue={defaultBoard ?? (!isAdmin && departments.length === 0 && boards.length === 1 ? boards[0].id : "")} className="input">
+          {(isAdmin || departments.length > 0) ? <option value="">Ninguno</option> : <option value="" disabled>Elige un tablero…</option>}
           {boards.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
         </select>
       </div>

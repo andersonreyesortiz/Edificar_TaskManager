@@ -733,10 +733,11 @@ export async function deleteTimeEntry(entryId: string) {
 
 export async function inviteUser(formData: FormData) {
   const admin = await requireUser();
-  if (!(await canManagePeople(admin))) throw new Error("Solo un administrador puede invitar personas.");
   const email = str(formData.get("email")).toLowerCase();
   const role = (str(formData.get("role")) || "GUEST") as Role;
   const boardId = str(formData.get("boardId")) || null;
+  // Administradores invitan en general; el dueño de un tablero invita solo a su tablero.
+  if (!(await canManagePeople(admin)) && !boardId) throw new Error("Elige el tablero al que invitas a la persona.");
   const departmentId = str(formData.get("departmentId")) || null;
   if (!z.string().email().safeParse(email).success) throw new Error("Correo no válido.");
   if (role === "ADMIN" && !isSuperAdmin(admin)) throw new Error("Solo el superadministrador puede invitar administradores.");

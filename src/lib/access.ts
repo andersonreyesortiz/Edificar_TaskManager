@@ -79,15 +79,21 @@ export async function canAccessBoard(user: User, boardId: string) {
   return (await prisma.board.count({ where: { id: boardId, ...where } })) > 0;
 }
 
-/** Puede agregar, quitar o cambiar el permiso de los miembros de un tablero. */
+/** Puede agregar, quitar o cambiar el permiso de los miembros de un tablero: superadmin, dueño o admin de su departamento. */
 export async function canManageMembers(user: User, boardId: string) {
   if (isSuperAdmin(user)) return true;
-  return (await prisma.board.count({ where: { id: boardId, department: adminOfDept(user) } })) > 0;
+  return (await prisma.board.count({ where: { id: boardId, OR: [{ ownerId: user.id }, { department: adminOfDept(user) }] } })) > 0;
+}
+
+/** Tableros donde la persona puede agregar o invitar miembros: los suyos y los de sus departamentos. */
+export function membersManageableWhere(user: User): Prisma.BoardWhereInput {
+  if (isSuperAdmin(user)) return { archived: false };
+  return { archived: false, OR: [{ ownerId: user.id }, { department: adminOfDept(user) }] };
 }
 
 export async function assertManageMembers(user: User, boardId: string) {
   if (!(await canManageMembers(user, boardId)))
-    throw new Error("Solo un administrador (o el administrador del departamento del tablero) puede gestionar miembros.");
+    throw new Error("Solo el dueño del tablero o un administrador puede gestionar sus miembros.");
 }
 
 export async function assertBoardAccess(user: User, boardId: string) {

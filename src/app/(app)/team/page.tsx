@@ -1,7 +1,7 @@
 import { headers } from "next/headers";
 import { requireUser } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
-import { adminDepartmentIds, isSuperAdmin, visibleBoardsWhere, visiblePeopleWhere } from "@/lib/access";
+import { adminDepartmentIds, isSuperAdmin, membersManageableWhere, visiblePeopleWhere } from "@/lib/access";
 import { DatabaseBackup, Download } from "lucide-react";
 import { fmtDateTime, roleMeta } from "@/lib/constants";
 import { Avatar } from "@/components/Avatar";
@@ -14,7 +14,10 @@ export default async function TeamPage({ searchParams }: { searchParams: Promise
   const origin = process.env.APP_URL ?? `${h.get("x-forwarded-proto") ?? "http"}://${h.get("host")}`;
   const isAdmin = isSuperAdmin(me);
   const myAdminDepts = await adminDepartmentIds(me);
-  const canInvite = isAdmin || myAdminDepts.length > 0;
+  const isAnyAdmin = isAdmin || myAdminDepts.length > 0;
+  // Los dueños de tableros también pueden invitar gente a sus propios tableros.
+  const ownsBoards = !isAnyAdmin && (await prisma.board.count({ where: { ownerId: me.id, archived: false } })) > 0;
+  const canInvite = isAnyAdmin || ownsBoards;
 
   const [users, invitations, manageableBoards, backups, departments, myDepts] = await Promise.all([
     prisma.user.findMany({
@@ -32,9 +35,9 @@ export default async function TeamPage({ searchParams }: { searchParams: Promise
           include: { invitedBy: true, board: true, department: true },
         })
       : Promise.resolve([]),
-    // Tableros a los que puede invitar gente: todos (superadmin) o los de sus departamentos.
+    // Tableros a los que puede invitar gente: todos (superadmin), los de sus departamentos y los suyos.
     prisma.board.findMany({
-      where: isAdmin ? visibleBoardsWhere(me) : { archived: false, departmentId: { in: myAdminDepts } },
+      where: membersManageableWhere(me),
       select: { id: true, name: true },
       orderBy: { name: "asc" },
     }),
@@ -58,8 +61,10 @@ export default async function TeamPage({ searchParams }: { searchParams: Promise
       <h1 className="text-2xl font-semibold">Equipo</h1>
       <p className="mt-1 text-sm text-muted">
         Para entrar a la app, toda persona necesita una invitación de un administrador (también las de la empresa).{" "}
-        {canInvite
+        {isAnyAdmin
           ? "Elige «Miembro» para la gente de la empresa e «Invitado» para externos."
+          : ownsBoards
+            ? "Puedes invitar personas a los tableros que creaste. Elige «Miembro» para la gente de la empresa e «Invitado» para externos."
           : "Solo los administradores pueden invitar personas o agregarlas a tableros. Aquí ves a las personas con las que compartes tableros."}
       </p>
 
@@ -81,7 +86,7 @@ export default async function TeamPage({ searchParams }: { searchParams: Promise
         </section>
       )}
 
-      {canInvite && (
+      {isAnyAdmin && (
         <section className="card mt-6">
           <div className="border-b border-line px-4 py-3">
             <h2 className="font-semibold">Departamentos</h2>
