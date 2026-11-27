@@ -19,6 +19,9 @@ import {
 } from "@/lib/actions";
 import { elapsed } from "@/components/RunningTimer";
 import { toInputDate } from "@/components/board/cells";
+import { MentionTextarea } from "./Mentions";
+
+type MentionPerson = { id: string; name: string | null; email: string; image: string | null };
 
 function useTaskHref() {
   const params = useSearchParams();
@@ -111,18 +114,18 @@ export function TitleEditor({ taskId, title }: { taskId: string; title: string }
   );
 }
 
-export function DescriptionEditor({ taskId, description }: { taskId: string; description: string }) {
+export function DescriptionEditor({ taskId, description, people }: { taskId: string; description: string; people: MentionPerson[] }) {
   const [value, setValue] = useState(description);
   const [pending, start] = useTransition();
   const dirty = value !== description;
   return (
     <div>
-      <textarea
+      <MentionTextarea
         value={value}
-        onChange={(e) => setValue(e.target.value)}
+        onChange={setValue}
+        people={people}
         rows={4}
-        placeholder="Agrega detalles, criterios o enlaces"
-        className="input"
+        placeholder="Agrega detalles, criterios o enlaces. Escribe @ para mencionar a alguien."
       />
       {dirty && (
         <div className="mt-2 flex justify-end gap-2">
@@ -311,26 +314,30 @@ export function TimeEntryDelete({ id }: { id: string }) {
   );
 }
 
-export function CommentForm({ taskId }: { taskId: string }) {
+export function CommentForm({ taskId, people }: { taskId: string; people: MentionPerson[] }) {
   const [body, setBody] = useState("");
   const [pending, start] = useTransition();
+  const send = () => {
+    if (!body.trim()) return;
+    const b = body;
+    setBody("");
+    start(() => addComment(taskId, b));
+  };
   return (
     <form
       onSubmit={(e) => {
         e.preventDefault();
-        if (!body.trim()) return;
-        const b = body;
-        setBody("");
-        start(() => addComment(taskId, b));
+        send();
       }}
       className="flex gap-2"
     >
-      <textarea
+      <MentionTextarea
         value={body}
-        onChange={(e) => setBody(e.target.value)}
+        onChange={setBody}
+        people={people}
+        onSubmitShortcut={send}
         rows={2}
-        placeholder="Escribe un comentario"
-        className="input"
+        placeholder="Escribe un comentario. Usa @ para mencionar a alguien."
       />
       <button disabled={pending || !body.trim()} className="btn-primary self-end">Enviar</button>
     </form>

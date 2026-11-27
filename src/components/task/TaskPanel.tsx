@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { fmtDate, fmtDateTime, formatMinutes, isClosed } from "@/lib/constants";
 import { Avatar } from "@/components/Avatar";
 import { AssigneePicker, DateCell, PrioritySelect, StatusSelect } from "@/components/board/cells";
+import { MentionText } from "./Mentions";
 import type { Person } from "@/components/board/types";
 import { ColumnCell } from "@/components/board/columns";
 import { TYPE_ICONS } from "@/components/board/column-icons";
@@ -139,9 +140,9 @@ export async function TaskPanel({
         <section>
           <h3 className="mb-2 text-sm font-semibold">Descripción</h3>
           {canEdit ? (
-            <DescriptionEditor taskId={task.id} description={task.description ?? ""} />
+            <DescriptionEditor taskId={task.id} description={task.description ?? ""} people={people} />
           ) : (
-            <p className="whitespace-pre-wrap text-sm text-ink/80">{task.description || <span className="text-muted">Sin descripción</span>}</p>
+            <p className="whitespace-pre-wrap text-sm text-ink/80">{task.description ? <MentionText text={task.description} people={people} /> : <span className="text-muted">Sin descripción</span>}</p>
           )}
         </section>
 
@@ -219,11 +220,11 @@ export async function TaskPanel({
                 <Avatar name={c.user.name} email={c.user.email} image={c.user.image} size={28} />
                 <div className="min-w-0 flex-1 rounded-lg bg-canvas px-3 py-2">
                   <p className="text-xs text-muted"><span className="font-medium text-ink">{c.user.name ?? c.user.email}</span> · {relative(c.createdAt)}</p>
-                  <p className="mt-0.5 whitespace-pre-wrap text-sm">{c.body}</p>
+                  <p className="mt-0.5 whitespace-pre-wrap text-sm"><MentionText text={c.body} people={people} /></p>
                 </div>
               </div>
             ))}
-            <CommentForm taskId={task.id} />
+            <CommentForm taskId={task.id} people={people} />
           </div>
         </section>
 

@@ -11,6 +11,7 @@ import { createGroup, createTask, setColumnLayout, deleteGroup, renameGroup, sta
 import { AssigneePicker, AvatarStack, DateCell, PriorityFlag, PrioritySelect, StatusSelect } from "./cells";
 import type { BoardGroup, BoardTask, Person } from "./types";
 import { ReadOnly } from "@/components/ReadOnly";
+import { BulkBar } from "./BulkBar";
 import { Modal } from "@/components/Modal";
 import { BUILTIN_COLUMNS, type BoardColumnDef, type BuiltinKey } from "@/lib/columns";
 import { FilterButton, matchesFilters, searchableText, type Filters } from "./filters";
@@ -451,10 +452,49 @@ function TableView({
   const allOpen = withSubs.length > 0 && withSubs.every((t) => expanded[t.id]);
   const toggleAll = () => saveExpanded(allOpen ? {} : Object.fromEntries(withSubs.map((t) => [t.id, true])));
 
+  // Selección para acciones en masa. Los colaboradores solo eligen sus propias tareas.
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const selectable = (t: BoardTask) => canEdit || t.mine;
+  const toggleSelect = (id: string) =>
+    setSelected((s) => {
+      const n = new Set(s);
+      if (n.has(id)) n.delete(id);
+      else n.add(id);
+      return n;
+    });
+  const setMany = (ids: string[], on: boolean) =>
+    setSelected((s) => {
+      const n = new Set(s);
+      ids.forEach((id) => (on ? n.add(id) : n.delete(id)));
+      return n;
+    });
+  // Quitar de la selección lo que ya no está en pantalla (borrado o filtrado).
+  const visibleIds = useMemo(() => new Set(tasks.flatMap((t) => [t.id, ...(t.subtasks ?? []).map((s) => s.id)])), [tasks]);
+  useEffect(() => {
+    setSelected((s) => {
+      const n = new Set([...s].filter((id) => visibleIds.has(id)));
+      return n.size === s.size ? s : n;
+    });
+  }, [visibleIds]);
+  const selectBox = (t: BoardTask) =>
+    selectable(t) ? (
+      <input
+        type="checkbox"
+        checked={selected.has(t.id)}
+        onChange={() => toggleSelect(t.id)}
+        className="h-3.5 w-3.5 shrink-0 cursor-pointer accent-brand-700"
+        aria-label={`Seleccionar «${t.title}»`}
+      />
+    ) : (
+      <span className="w-3.5 shrink-0" />
+    );
+
   const renderRow = (t: BoardTask, sub: boolean, open: boolean) => (
-    <tr key={t.id} className={`border-b border-line/70 ${sub ? "bg-canvas/40 hover:bg-canvas" : "hover:bg-canvas/60"}`}>
-      <td className={`py-1.5 pr-3 ${sub ? "pl-9" : "pl-1.5"}`}>
+    <tr key={t.id} className={`border-b border-line/70 ${selected.has(t.id) ? "bg-brand-50" : sub ? "bg-canvas/40 hover:bg-canvas" : "hover:bg-canvas/60"}`}>
+      <td className="py-1.5 pl-2.5 pr-3">
         <div className="flex items-center gap-1">
+          {selectBox(t)}
+          {sub && <span className="w-6 shrink-0" />}
           {sub ? (
             <span className="mr-1 h-3 w-3 shrink-0 rounded-bl border-b border-l border-line" aria-hidden />
           ) : (
@@ -527,8 +567,28 @@ function TableView({
                   </colgroup>
                   <thead>
                     <tr className="border-b border-line text-left text-xs text-muted">
-                      <th className="relative py-2 pl-1.5 pr-3 font-medium">
+                      <th className="relative py-2 pl-2.5 pr-3 font-medium">
                         <span className="flex items-center gap-1">
+                          {(() => {
+                            const ids = rows.filter(selectable).map((t) => t.id);
+                            const all = ids.length > 0 && ids.every((id) => selected.has(id));
+                            const some = ids.some((id) => selected.has(id));
+                            return ids.length ? (
+                              <input
+                                type="checkbox"
+                                checked={all}
+                                ref={(el) => {
+                                  if (el) el.indeterminate = some && !all;
+                                }}
+                                onChange={() => setMany(ids, !all)}
+                                className="h-3.5 w-3.5 shrink-0 cursor-pointer accent-brand-700"
+                                aria-label={`Seleccionar todas las tareas de «${g.name}»`}
+                                title="Seleccionar todas las tareas del grupo"
+                              />
+                            ) : (
+                              <span className="w-3.5 shrink-0" />
+                            );
+                          })()}
                           {withSubs.length > 0 ? (
                             <button
                               type="button"
@@ -606,7 +666,7 @@ function TableView({
                           {open && subs.map((st) => renderRow(st, true, false))}
                           {open && canEdit && (
                             <tr className="border-b border-line/70 bg-canvas/40">
-                              <td colSpan={items.length + 2} className="py-0 pl-9">
+                              <td colSpan={items.length + 2} className="py-0 pl-12">
                                 <AddSubtaskRow boardId={boardId} parentId={t.id} />
                               </td>
                             </tr>
@@ -653,6 +713,8 @@ function TableView({
           <button className="btn-outline"><Plus size={14} /> Agregar grupo</button>
         </form>
       )}
+      <BulkBar ids={[...selected]} onClear={() => setSelected(new Set())} people={people} groups={boardGroups} canEdit={canEdit} />
+      {selected.size > 0 && <div className="h-16" aria-hidden />}
     </div>
   );
 }

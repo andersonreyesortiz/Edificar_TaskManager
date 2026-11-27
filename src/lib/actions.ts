@@ -13,6 +13,7 @@ import { notify, sendInvitationEmail } from "@/lib/notify";
 import { BUILTIN_COLUMNS, COLUMN_TYPES, asSettings, columnTypeLabel, defaultSettings, valueToText, type BuiltinKey, type ColumnSettings, type ColumnValue } from "@/lib/columns";
 import { emailProviderId, signIn, signOut } from "@/auth";
 import { asStatusConfig } from "@/lib/status-config";
+import { notifyMentions } from "@/lib/mentions";
 
 // ---------- utilidades ----------
 
@@ -487,8 +488,10 @@ export async function updateTaskTitle(taskId: string, title: string) {
 export async function updateTaskDescription(taskId: string, description: string) {
   const user = await requireUser();
   const t = await assertTaskEdit(user, taskId);
+  const prev = await prisma.task.findUniqueOrThrow({ where: { id: taskId }, select: { description: true } });
   await prisma.task.update({ where: { id: taskId }, data: { description: description.trim() || null } });
   await log(user, "task.description", `actualizó la descripción de «${t.title}»`, { boardId: t.boardId, taskId });
+  await notifyMentions(user, t, description, "descripción", prev.description);
   refresh(t.boardId);
 }
 
@@ -640,6 +643,60 @@ export async function deleteTask(taskId: string) {
   refresh(t.boardId);
 }
 
+export type BulkOp =
+  | { kind: "status"; status: TaskStatus }
+  | { kind: "priority"; priority: Priority }
+  | { kind: "group"; groupId: string }
+  | { kind: "assign"; userId: string }
+  | { kind: "unassign"; userId: string }
+  | { kind: "delete" };
+
+/**
+ * Acciones en masa sobre varias tareas. Aplica la misma acción individual a cada tarea, así se
+ * respetan los permisos de cada una y cada cambio queda en el historial. Devuelve cuántas se
+ * cambiaron y cuántas se saltaron (por permisos u otro motivo).
+ */
+export async function bulkUpdateTasks(taskIds: string[], op: BulkOp): Promise<{ done: number; skipped: number; error?: string }> {
+  await requireUser();
+  let ids = [...new Set(taskIds)].slice(0, 500);
+  let skipped = 0;
+  let error: string | undefined;
+  if (op.kind === "delete" || op.kind === "group") {
+    // Las subtareas van con su tarea principal: si ya está elegida, no se procesan aparte.
+    const rows = await prisma.task.findMany({ where: { id: { in: ids } }, select: { id: true, parentId: true } });
+    const chosen = new Set(ids);
+    ids = rows.filter((r) => !r.parentId || !chosen.has(r.parentId)).map((r) => r.id);
+    if (op.kind === "group") {
+      // Una subtarea sola no cambia de grupo: siempre está en el grupo de su tarea principal.
+      const loose = ids.filter((id) => rows.find((r) => r.id === id)?.parentId);
+      if (loose.length) error = "Las subtareas se mueven junto con su tarea principal.";
+      skipped += loose.length;
+      ids = ids.filter((id) => !loose.includes(id));
+    }
+  }
+  let done = 0;
+  for (const id of ids) {
+    try {
+      if (op.kind === "status") await updateTaskStatus(id, op.status);
+      else if (op.kind === "priority") await updateTaskPriority(id, op.priority);
+      else if (op.kind === "group") await moveTaskToGroup(id, op.groupId);
+      else if (op.kind === "delete") await deleteTask(id);
+      else {
+        const cur = await prisma.taskAssignee.findMany({ where: { taskId: id }, select: { userId: true } });
+        const set = new Set(cur.map((c) => c.userId));
+        if (op.kind === "assign") set.add(op.userId);
+        else set.delete(op.userId);
+        await setTaskAssignees(id, [...set]);
+      }
+      done++;
+    } catch (e) {
+      skipped++;
+      error ??= e instanceof Error ? e.message : String(e);
+    }
+  }
+  return { done, skipped, error };
+}
+
 // ---------- comentarios ----------
 
 export async function addComment(taskId: string, body: string) {
@@ -652,7 +709,9 @@ export async function addComment(taskId: string, body: string) {
     where: { id: taskId },
     select: { createdById: true, assignees: { select: { userId: true } } },
   });
-  await notify(user, [people.createdById, ...people.assignees.map((a) => a.userId)], {
+  // Las personas mencionadas reciben su propio aviso; no se les manda también el aviso general.
+  const mentioned = await notifyMentions(user, t, body, "comentario");
+  await notify(user, [people.createdById, ...people.assignees.map((a) => a.userId)].filter((id) => !mentioned.includes(id)), {
     text: `comentó en «${t.title}»`,
     link: `/boards/${t.boardId}?task=${taskId}`,
     subject: `Nuevo comentario en «${t.title}»`,
