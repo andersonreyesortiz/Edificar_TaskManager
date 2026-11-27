@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { formatMinutes } from "@/lib/constants";
+import { formatMinutes, isClosed } from "@/lib/constants";
 import { DateCell, PrioritySelect, StatusSelect } from "@/components/board/cells";
 import type { Priority, TaskStatus } from "@prisma/client";
 
@@ -47,7 +47,7 @@ export function TaskListTable({ tasks, empty }: { tasks: ListTask[]; empty: stri
               </td>
               <td className="px-2 py-1.5"><StatusSelect taskId={t.id} status={t.status} /></td>
               <td className="px-2 py-1.5"><PrioritySelect taskId={t.id} priority={t.priority} /></td>
-              <td className="px-2 py-1.5"><DateCell taskId={t.id} value={t.dueDate} done={t.status === "DONE"} /></td>
+              <td className="px-2 py-1.5"><DateCell taskId={t.id} value={t.dueDate} done={isClosed(t.status)} /></td>
               <td className="px-2 py-1.5 text-xs tabular-nums">{t.minutes ? formatMinutes(t.minutes) : "—"}</td>
             </tr>
           ))}

@@ -3,12 +3,13 @@ import { addDays, format, startOfDay, startOfWeek } from "date-fns";
 import { es } from "date-fns/locale";
 import { prisma } from "@/lib/prisma";
 import { dashboardBoardsWhere } from "@/lib/access";
+import { STATUSES, isClosed, CLOSED_STATUSES } from "@/lib/constants";
 
 /** Datos del resumen ejecutivo (dashboard). */
 
-export const STATUS_ORDER: TaskStatus[] = ["TODO", "IN_PROGRESS", "REVIEW", "BLOCKED", "DONE"];
+export const STATUS_ORDER: TaskStatus[] = STATUSES.map((s) => s.value);
 type StatusCounts = Record<TaskStatus, number>;
-const emptyCounts = (): StatusCounts => ({ TODO: 0, IN_PROGRESS: 0, REVIEW: 0, BLOCKED: 0, DONE: 0 });
+const emptyCounts = (): StatusCounts => Object.fromEntries(STATUSES.map((s) => [s.value, 0])) as StatusCounts;
 
 export type ProjectRow = {
   id: string;
@@ -93,7 +94,7 @@ export async function buildDashboard(user: User, opts: { days: number; boardId?:
   ]);
 
   const inPeriod = (d: Date | null) => !!d && d >= from && d < to;
-  const isOverdue = (t: { status: TaskStatus; dueDate: Date | null }) => t.status !== "DONE" && !!t.dueDate && t.dueDate < today;
+  const isOverdue = (t: { status: TaskStatus; dueDate: Date | null }) => !isClosed(t.status) && !!t.dueDate && t.dueDate < today;
   const boardMeta = new Map(boards.map((b) => [b.id, b]));
 
   // --- por proyecto (solo tareas principales, como en los tableros) ---
@@ -109,7 +110,7 @@ export async function buildDashboard(user: User, opts: { days: number; boardId?:
     p.total++;
     p.counts[t.status]++;
     if (isOverdue(t)) p.overdue++;
-    if (t.status === "DONE" && inPeriod(t.completedAt)) p.completedInPeriod++;
+    if (isClosed(t.status) && inPeriod(t.completedAt)) p.completedInPeriod++;
     p.estimateMinutes += t.estimateMinutes ?? 0;
   }
   for (const e of entries) {
@@ -118,7 +119,7 @@ export async function buildDashboard(user: User, opts: { days: number; boardId?:
     p.loggedMinutes += e.minutes;
     if (inPeriod(e.startedAt)) p.periodMinutes += e.minutes;
   }
-  for (const p of projects.values()) p.progress = p.total ? p.counts.DONE / p.total : 0;
+  for (const p of projects.values()) p.progress = p.total ? CLOSED_STATUSES.reduce((a, s) => a + p.counts[s], 0) / p.total : 0;
 
   // --- por persona (tareas y subtareas asignadas) ---
   const people = new Map<string, PersonRow>();
@@ -134,7 +135,7 @@ export async function buildDashboard(user: User, opts: { days: number; boardId?:
     for (const { user: u } of t.assignees) {
       if (!u.active) continue;
       const r = person(u);
-      if (t.status === "DONE") {
+      if (isClosed(t.status)) {
         if (inPeriod(t.completedAt)) r.completedInPeriod++;
         continue;
       }
@@ -191,7 +192,7 @@ export async function buildDashboard(user: User, opts: { days: number; boardId?:
   const projectList = [...projects.values()].sort((a, b) => b.overdue - a.overdue || b.total - a.total);
   const peopleList = [...people.values()].sort((a, b) => b.open - a.open || b.periodMinutes - a.periodMinutes);
 
-  const open = tasks.filter((t) => t.status !== "DONE");
+  const open = tasks.filter((t) => !isClosed(t.status));
   return {
     from,
     to,
@@ -200,7 +201,7 @@ export async function buildDashboard(user: User, opts: { days: number; boardId?:
       open: open.length,
       overdue: open.filter(isOverdue).length,
       blocked: open.filter((t) => t.status === "BLOCKED").length,
-      completedInPeriod: tasks.filter((t) => t.status === "DONE" && inPeriod(t.completedAt)).length,
+      completedInPeriod: tasks.filter((t) => isClosed(t.status) && inPeriod(t.completedAt)).length,
       periodMinutes: entries.filter((e) => inPeriod(e.startedAt)).reduce((s, e) => s + e.minutes, 0),
       dueThisWeek: open.filter((t) => !isOverdue(t) && t.dueDate && t.dueDate < weekEnd).length,
     },

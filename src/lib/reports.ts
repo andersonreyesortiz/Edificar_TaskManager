@@ -3,7 +3,7 @@ import { addDays, differenceInCalendarDays, format, startOfDay, startOfWeek } fr
 import { es } from "date-fns/locale";
 import { prisma } from "@/lib/prisma";
 import { visibleBoardsWhere } from "@/lib/access";
-import { APP_TIMEZONE } from "@/lib/constants";
+import { APP_TIMEZONE, CLOSED_STATUSES, isClosed } from "@/lib/constants";
 
 /** Día calendario (yyyy-MM-dd) de una fecha en la zona horaria de la empresa. */
 const localDay = (d: Date) => new Intl.DateTimeFormat("en-CA", { timeZone: APP_TIMEZONE }).format(d);
@@ -50,7 +50,7 @@ export async function buildReport(user: User, f: ReportFilters) {
   const [byStatus, completed, overdue] = await Promise.all([
     prisma.task.groupBy({ by: ["status"], where: taskWhere, _count: true }),
     prisma.task.count({ where: { ...taskWhere, completedAt: { gte: f.from, lt: f.to } } }),
-    prisma.task.count({ where: { ...taskWhere, status: { not: "DONE" }, dueDate: { lt: startOfDay(new Date()) } } }),
+    prisma.task.count({ where: { ...taskWhere, status: { notIn: CLOSED_STATUSES }, dueDate: { lt: startOfDay(new Date()) } } }),
   ]);
 
   const sum = <K extends string>(key: (e: (typeof entries)[number]) => K, label: (e: (typeof entries)[number]) => string) => {
@@ -104,7 +104,7 @@ export async function buildReport(user: User, f: ReportFilters) {
     totalMinutes: entries.reduce((a, e) => a + e.minutes, 0),
     completed,
     overdue,
-    open: byStatus.filter((s) => s.status !== "DONE").reduce((a, s) => a + s._count, 0),
+    open: byStatus.filter((s) => !isClosed(s.status)).reduce((a, s) => a + s._count, 0),
     byStatus: byStatus.map((s) => ({ status: s.status, count: s._count })),
     byPerson,
     byBoard,

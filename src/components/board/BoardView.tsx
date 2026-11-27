@@ -5,7 +5,8 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Fragment, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { ChevronDown, ChevronRight, ListTree, Pause, Play, Plus, Search, Trash2 } from "lucide-react";
 import type { TaskStatus } from "@prisma/client";
-import { STATUSES, formatMinutes } from "@/lib/constants";
+import { formatMinutes, isClosed } from "@/lib/constants";
+import { useStatuses } from "./StatusContext";
 import { createGroup, createTask, setColumnLayout, deleteGroup, renameGroup, startTimer, stopTimer, updateTaskStatus } from "@/lib/actions";
 import { AssigneePicker, AvatarStack, DateCell, PriorityFlag, PrioritySelect, StatusSelect } from "./cells";
 import type { BoardGroup, BoardTask, Person } from "./types";
@@ -32,6 +33,7 @@ type Props = {
 };
 
 export function BoardView(props: Props) {
+  const statuses = useStatuses();
   const [query, setQuery] = useState("");
   const [onlyMine, setOnlyMine] = useState(false);
   const [status, setStatus] = useState<TaskStatus | "">("");
@@ -72,7 +74,7 @@ export function BoardView(props: Props) {
         </div>
         <select value={status} onChange={(e) => setStatus(e.target.value as TaskStatus | "")} className="input w-auto">
           <option value="">Todos los estados</option>
-          {STATUSES.map((s) => (
+          {statuses.visible.map((s) => (
             <option key={s.value} value={s.value}>{s.label}</option>
           ))}
         </select>
@@ -333,10 +335,11 @@ function TableView({
   columnOrder,
   columnWidths,
 }: Props & { groupBy: "groups" | "status" }) {
+  const statuses = useStatuses();
   const byStatus = groupBy === "status";
   // En la vista por estado, cada estado con tareas es un grupo "virtual".
   const groups: BoardGroup[] = byStatus
-    ? STATUSES.filter((s) => tasks.some((t) => t.status === s.value)).map((s) => ({ id: `status:${s.value}`, name: s.label, color: s.color }))
+    ? statuses.all.filter((s) => tasks.some((t) => t.status === s.value)).map((s) => ({ id: `status:${s.value}`, name: s.label, color: s.color }))
     : boardGroups;
   const inGroup = (t: BoardTask, g: BoardGroup) => (byStatus ? `status:${t.status}` === g.id : t.groupId === g.id);
 
@@ -421,7 +424,7 @@ function TableView({
       case "people": return <AssigneePicker taskId={t.id} assignees={t.assignees} people={people} />;
       case "status": return <ReadOnly on={!canEdit && !t.mine}><StatusSelect taskId={t.id} status={t.status} /></ReadOnly>;
       case "priority": return <PrioritySelect taskId={t.id} priority={t.priority} />;
-      case "due": return <DateCell taskId={t.id} value={t.dueDate} done={t.status === "DONE"} />;
+      case "due": return <DateCell taskId={t.id} value={t.dueDate} done={isClosed(t.status)} />;
       case "time": return <ReadOnly on={!canEdit && !t.mine}><TimeCell task={t} /></ReadOnly>;
     }
   };
@@ -466,7 +469,7 @@ function TableView({
             </button>
           )}
           <Link href={href(t.id)} scroll={false} className="flex min-w-0 items-center gap-2 hover:text-brand-700">
-            <span className={`min-w-0 truncate ${t.status === "DONE" ? "text-muted line-through" : sub ? "" : "font-medium"}`}>{t.title}</span>
+            <span className={`min-w-0 truncate ${isClosed(t.status) ? "text-muted line-through" : sub ? "" : "font-medium"}`}>{t.title}</span>
             {!sub && t.subtaskCount > 0 && (
               <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-canvas px-1.5 py-0.5 text-[11px] text-muted">
                 <ListTree size={11} /> {t.subtaskDone}/{t.subtaskCount}
@@ -502,7 +505,7 @@ function TableView({
       {groups.map((g) => {
         const rows = tasks.filter((t) => inGroup(t, g));
         const minutes = rows.reduce((a, t) => a + t.minutes, 0);
-        const done = rows.filter((t) => t.status === "DONE").length;
+        const done = rows.filter((t) => isClosed(t.status)).length;
         return (
           <section key={g.id}>
             <GroupHeader
@@ -629,7 +632,7 @@ function TableView({
                   </tbody>
                 </table>
                 {canEdit && !byStatus && <AddTaskRow boardId={boardId} groupId={g.id} />}
-                {rows.length > 0 && <StatusBar tasks={rows} label={`${done} de ${rows.length} terminadas`} />}
+                {rows.length > 0 && <StatusBar tasks={rows} label={`${done} de ${rows.length} cerradas`} />}
               </div>
             )}
           </section>
@@ -655,10 +658,11 @@ function TableView({
 }
 
 function StatusBar({ tasks, label }: { tasks: BoardTask[]; label: string }) {
+  const statuses = useStatuses();
   return (
     <div className="flex items-center gap-3 border-t border-line px-3 py-2">
       <div className="flex h-2 flex-1 overflow-hidden rounded-full bg-line">
-        {STATUSES.map((s) => {
+        {statuses.all.map((s) => {
           const n = tasks.filter((t) => t.status === s.value).length;
           return n ? <div key={s.value} title={`${s.label}: ${n}`} style={{ width: `${(n / tasks.length) * 100}%`, background: s.color }} /> : null;
         })}
@@ -677,10 +681,13 @@ function KanbanView({ tasks, groups, canEdit }: Props) {
   const [, start] = useTransition();
   const statusOf = (t: BoardTask) => local[t.id] ?? t.status;
   const groupName = (id: string | null) => groups.find((g) => g.id === id);
+  // Columnas: los estados activos, más los ocultos que todavía tengan tareas.
+  const { all } = useStatuses();
+  const cols = all.filter((s) => !s.hidden || tasks.some((t) => statusOf(t) === s.value));
 
   return (
     <div className="flex gap-4 overflow-x-auto pb-4">
-      {STATUSES.map((s) => {
+      {cols.map((s) => {
         const col = tasks.filter((t) => statusOf(t) === s.value);
         return (
           <div

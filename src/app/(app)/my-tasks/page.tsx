@@ -1,10 +1,11 @@
 import { requireUser } from "@/lib/session";
 import { myTasks } from "@/lib/queries";
 import { TaskListTable } from "@/components/TaskListTable";
+import { CLOSED_STATUSES } from "@/lib/constants";
 
 export default async function MyTasksPage() {
   const user = await requireUser();
-  const [open, done] = await Promise.all([myTasks(user, { status: { not: "DONE" } }), myTasks(user, { status: "DONE" })]);
+  const [open, done] = await Promise.all([myTasks(user, { status: { notIn: CLOSED_STATUSES } }), myTasks(user, { status: { in: CLOSED_STATUSES } })]);
   return (
     <div className="mx-auto max-w-6xl px-4 py-8 md:px-8">
       <h1 className="text-2xl font-semibold">Mis tareas</h1>

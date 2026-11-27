@@ -7,11 +7,12 @@ import type { BoardRole, ColumnType, Prisma, Priority, Role, TaskStatus, User } 
 import { prisma } from "@/lib/prisma";
 import { requireAdmin, requireUser } from "@/lib/session";
 import { adminDepartmentIds, assertManageMembers, canManagePeople, isSuperAdmin, assertBoardAccess, assertBoardEdit, assertTaskAccess, assertTaskEdit, assertTaskProgress, canManageBoard } from "@/lib/access";
-import { BOARD_COLORS, priorityMeta, statusMeta } from "@/lib/constants";
+import { BOARD_COLORS, priorityMeta, statusMeta, isClosed, CLOSE_VERB, STATUSES } from "@/lib/constants";
 import { AuthError } from "next-auth";
 import { notify, sendInvitationEmail } from "@/lib/notify";
 import { BUILTIN_COLUMNS, COLUMN_TYPES, asSettings, columnTypeLabel, defaultSettings, valueToText, type BuiltinKey, type ColumnSettings, type ColumnValue } from "@/lib/columns";
 import { emailProviderId, signIn, signOut } from "@/auth";
+import { asStatusConfig } from "@/lib/status-config";
 
 // ---------- utilidades ----------
 
@@ -213,6 +214,17 @@ export async function removeBoardMember(boardId: string, userId: string) {
   const member = await prisma.user.findUniqueOrThrow({ where: { id: userId } });
   await prisma.boardMember.deleteMany({ where: { boardId, userId } });
   await log(user, "board.member_removed", `quitó a ${member.name ?? member.email} del tablero`, { boardId });
+  refresh(boardId);
+}
+
+/** Estados que usa el tablero, con sus nombres y colores (dueño, admin del departamento o superadmin). */
+export async function setBoardStatusConfig(boardId: string, raw: unknown) {
+  const user = await requireUser();
+  if (!(await canManageBoard(user, boardId))) throw new Error("Solo quien administra el tablero puede cambiar sus estados.");
+  const config = asStatusConfig(raw);
+  if ((config.hidden?.length ?? 0) >= STATUSES.length) throw new Error("Deja al menos un estado en uso.");
+  await prisma.board.update({ where: { id: boardId }, data: { statusConfig: config as Prisma.InputJsonValue } });
+  await log(user, "board.statuses", "cambió los estados del tablero", { boardId });
   refresh(boardId);
 }
 
@@ -498,21 +510,21 @@ export async function updateTaskStatus(taskId: string, status: TaskStatus) {
   if (before.status === status) return;
   await prisma.task.update({
     where: { id: taskId },
-    data: { status, completedAt: status === "DONE" ? new Date() : null },
+    data: { status, completedAt: isClosed(status) ? new Date() : null },
   });
   await log(user, "task.status", `cambió el estado de «${t.title}» a ${statusMeta(status).label}`, { boardId: t.boardId, taskId });
   if (before.board.autoGroupByStatus && !before.parentId) {
     await placeInStatusGroup(t.boardId, { id: taskId, status, groupId: before.groupId });
   }
-  if (status === "DONE") {
+  if (isClosed(status)) {
     // Avisar a quien asignó la tarea (o a quien la creó, si no hay registro de la asignación).
     const assigners = before.assignees.map((a) => a.assignedById).filter((x): x is string => !!x);
     const recipients = assigners.length ? assigners : [before.createdById];
     const title = before.parent ? `${t.title} (subtarea de «${before.parent.title}»)` : t.title;
     await notify(user, recipients, {
-      text: `terminó la tarea «${title}»`,
+      text: `${CLOSE_VERB[status] ?? "cerró"} la tarea «${title}»`,
       link: `/boards/${t.boardId}?task=${taskId}`,
-      subject: `Tarea terminada: ${t.title}`,
+      subject: `Tarea ${statusMeta(status).label.toLowerCase()}: ${t.title}`,
       detailHtml: `<p>Tablero: <b>${escapeHtml(before.board.name)}</b></p>`,
       cta: "Ver tarea",
     });

@@ -5,7 +5,7 @@ import { boardDepartmentChoices } from "@/lib/access";
 import { prisma } from "@/lib/prisma";
 import { visibleBoardsWhere } from "@/lib/access";
 import { myTasks } from "@/lib/queries";
-import { formatMinutes, STATUSES } from "@/lib/constants";
+import { formatMinutes, STATUSES, CLOSED_STATUSES, isClosed } from "@/lib/constants";
 import { TaskListTable } from "@/components/TaskListTable";
 import { ActivityList } from "@/components/ActivityList";
 import { NewBoardButton } from "@/components/NewBoardButton";
@@ -21,7 +21,7 @@ export default async function HomePage() {
       orderBy: { updatedAt: "desc" },
       include: { tasks: { where: { parentId: null }, select: { status: true } }, _count: { select: { members: true } } },
     }),
-    myTasks(user, { status: { not: "DONE" } }),
+    myTasks(user, { status: { notIn: CLOSED_STATUSES } }),
     prisma.timeEntry.aggregate({ where: { userId: user.id, startedAt: { gte: weekStart } }, _sum: { minutes: true } }),
     prisma.activity.findMany({
       where: { board: visibleBoardsWhere(user) },
@@ -67,7 +67,7 @@ export default async function HomePage() {
       </div>
       <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {boards.map((b) => {
-          const done = b.tasks.filter((t) => t.status === "DONE").length;
+          const done = b.tasks.filter((t) => isClosed(t.status)).length;
           return (
             <Link key={b.id} href={`/boards/${b.id}`} className="card block p-4 transition hover:shadow-md">
               <div className="flex items-center gap-2">

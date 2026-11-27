@@ -3,10 +3,13 @@ import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/session";
 import { adminDepartmentIds, boardLevel, canAccessBoard, canManageMembers, isSuperAdmin } from "@/lib/access";
 import { BoardView } from "@/components/board/BoardView";
+import { BoardStatusProvider } from "@/components/board/StatusContext";
+import { asStatusConfig, statusOptions } from "@/lib/status-config";
 import { BoardHeader } from "@/components/board/BoardHeader";
 import { TaskPanel } from "@/components/task/TaskPanel";
 import type { BoardTask, Person } from "@/components/board/types";
 import { asSettings, type BoardColumnDef, type BuiltinKey, type ColumnValue } from "@/lib/columns";
+import { isClosed } from "@/lib/constants";
 
 const personSelect = { id: true, name: true, email: true, image: true } as const;
 
@@ -91,7 +94,7 @@ export default async function BoardPage({
       estimateMinutes: t.estimateMinutes,
       assignees: t.assignees.map((a) => a.user),
       subtaskCount: subs.length,
-      subtaskDone: subs.filter((s) => s.status === "DONE").length,
+      subtaskDone: subs.filter((s) => isClosed(s.status)).length,
       minutes: (minutesOf.get(t.id) ?? 0) + subs.reduce((a, s) => a + (minutesOf.get(s.id) ?? 0), 0),
       running: runningIds.has(t.id) || subs.some((s) => runningIds.has(s.id)),
       mine: t.assignees.some((a) => a.userId === user.id),
@@ -112,6 +115,7 @@ export default async function BoardPage({
   const hidden = (board.hiddenColumns ?? []) as BuiltinKey[];
 
   return (
+    <BoardStatusProvider options={statusOptions(asStatusConfig(board.statusConfig))}>
     <div className="px-4 py-6 md:px-8">
       <BoardHeader
         board={{ id: board.id, name: board.name, description: board.description, color: board.color, ownerId: board.ownerId, autoGroupByStatus: board.autoGroupByStatus }}
@@ -126,7 +130,7 @@ export default async function BoardPage({
         view={currentView}
         stats={{
           total: tasks.length,
-          done: tasks.filter((t) => t.status === "DONE").length,
+          done: tasks.filter((t) => isClosed(t.status)).length,
           minutes: tasks.reduce((a, t) => a + t.minutes, 0),
         }}
       />
@@ -146,5 +150,6 @@ export default async function BoardPage({
       />
       {openTaskId && <TaskPanel taskId={openTaskId} boardId={board.id} people={people} groups={board.groups} user={user} columns={columns} canEdit={canEdit} />}
     </div>
+    </BoardStatusProvider>
   );
 }

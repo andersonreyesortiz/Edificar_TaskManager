@@ -1,6 +1,6 @@
 import type { Group, User } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { fmtDate, fmtDateTime, formatMinutes } from "@/lib/constants";
+import { fmtDate, fmtDateTime, formatMinutes, isClosed } from "@/lib/constants";
 import { Avatar } from "@/components/Avatar";
 import { AssigneePicker, DateCell, PrioritySelect, StatusSelect } from "@/components/board/cells";
 import type { Person } from "@/components/board/types";
@@ -115,7 +115,7 @@ export async function TaskPanel({
           <dt className="text-muted">Inicio</dt>
           <dd><DateCell taskId={task.id} value={task.startDate} field="startDate" /></dd>
           <dt className="text-muted">Fecha límite</dt>
-          <dd><DateCell taskId={task.id} value={task.dueDate} done={task.status === "DONE"} /></dd>
+          <dd><DateCell taskId={task.id} value={task.dueDate} done={isClosed(task.status)} /></dd>
           <dt className="text-muted">Estimado</dt>
           <dd><EstimateInput taskId={task.id} minutes={task.estimateMinutes} /></dd>
           {!task.parentId && (
@@ -151,7 +151,7 @@ export async function TaskPanel({
               Subtareas{" "}
               {task.subtasks.length > 0 && (
                 <span className="font-normal text-muted">
-                  {task.subtasks.filter((s) => s.status === "DONE").length}/{task.subtasks.length}
+                  {task.subtasks.filter((s) => isClosed(s.status)).length}/{task.subtasks.length}
                 </span>
               )}
             </h3>
@@ -160,7 +160,7 @@ export async function TaskPanel({
                 const mins = s.timeEntries.reduce((a, e) => a + e.minutes, 0);
                 return (
                   <div key={s.id} className="flex items-center gap-2 px-3 py-1.5">
-                    <SubtaskTitle id={s.id} title={s.title} done={s.status === "DONE"} />
+                    <SubtaskTitle id={s.id} title={s.title} done={isClosed(s.status)} />
                     {mins > 0 && <span className="text-xs text-muted">{formatMinutes(mins)}</span>}
                     <ReadOnly on={!canEdit}><AssigneePicker taskId={s.id} assignees={s.assignees.map((a) => a.user)} people={people} /></ReadOnly>
                     <ReadOnly on={!canProgress}><StatusSelect taskId={s.id} status={s.status} /></ReadOnly>

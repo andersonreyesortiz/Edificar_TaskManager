@@ -12,6 +12,7 @@ import {
   ListChecks,
   Phone,
   Plus,
+  Settings2,
   Star,
   Trash2,
   UserPlus,
@@ -29,6 +30,7 @@ import {
   type ColumnValue,
 } from "@/lib/columns";
 import { createColumn, deleteColumn, setBuiltinColumnHidden, setColumnValue, updateColumn } from "@/lib/actions";
+import { StatusManager } from "./StatusManager";
 import { Popover } from "@/components/Popover";
 import { Avatar } from "@/components/Avatar";
 import { AvatarStack } from "./cells";
@@ -465,10 +467,13 @@ export function BuiltinHeader({
   onMove: { left?: () => void; right?: () => void };
 }) {
   const [, start] = useTransition();
+  const [managing, setManaging] = useState(false);
   if (!canEdit) return <span className="px-1 font-medium">{label}</span>;
   return (
+    <>
+    {managing && <StatusManager boardId={boardId} onClose={() => setManaging(false)} />}
     <Popover
-      width={180}
+      width={200}
       trigger={() => (
         <button className="group inline-flex items-center gap-1 rounded px-1 py-0.5 font-medium hover:bg-canvas hover:text-ink">
           {label}
@@ -492,9 +497,21 @@ export function BuiltinHeader({
               <EyeOff size={14} /> Ocultar columna
             </button>
           )}
+          {canManage && k === "status" && (
+            <button
+              onClick={() => {
+                close();
+                setManaging(true);
+              }}
+              className="flex w-full items-center gap-2 rounded-md border-t border-line px-2 py-1.5 text-left hover:bg-canvas"
+            >
+              <Settings2 size={14} /> Gestionar estados
+            </button>
+          )}
         </div>
       )}
     </Popover>
+    </>
   );
 }
 

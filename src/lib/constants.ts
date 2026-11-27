@@ -9,7 +9,16 @@ export const STATUSES: { value: TaskStatus; label: string; color: string; soft: 
   { value: "REVIEW", label: "En revisión", color: "#9333ea", soft: "#f3e8ff" },
   { value: "BLOCKED", label: "Bloqueada", color: "#dc2626", soft: "#fee2e2" },
   { value: "DONE", label: "Terminada", color: "#16a34a", soft: "#dcfce7" },
+  { value: "APPROVED", label: "Aprobado", color: "#037f4c", soft: "#d1fae5" },
+  { value: "REJECTED", label: "Rechazado", color: "#9f1239", soft: "#ffe4e6" },
+  { value: "ARCHIVED", label: "Archivado", color: "#94a3b8", soft: "#f1f5f9" },
 ];
+
+/** Estados que cierran una tarea: ya no está pendiente ni atrasada y cuenta como resuelta. */
+export const CLOSED_STATUSES: TaskStatus[] = ["DONE", "APPROVED", "REJECTED", "ARCHIVED"];
+export const isClosed = (s: TaskStatus) => CLOSED_STATUSES.includes(s);
+/** Verbo para el aviso a quien asignó la tarea cuando se cierra. */
+export const CLOSE_VERB: Partial<Record<TaskStatus, string>> = { DONE: "terminó", APPROVED: "aprobó", REJECTED: "rechazó", ARCHIVED: "archivó" };
 
 export const PRIORITIES: { value: Priority; label: string; color: string }[] = [
   { value: "LOW", label: "Baja", color: "#94a3b8" },

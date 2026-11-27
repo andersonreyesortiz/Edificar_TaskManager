@@ -3,14 +3,15 @@
 import { useOptimistic, useTransition } from "react";
 import { Check, ChevronDown, UserPlus } from "lucide-react";
 import type { Priority, TaskStatus } from "@prisma/client";
-import { PRIORITIES, STATUSES, priorityMeta, statusMeta } from "@/lib/constants";
+import { PRIORITIES, priorityMeta } from "@/lib/constants";
+import { useStatuses } from "./StatusContext";
 import { setTaskAssignees, updateTaskDates, updateTaskPriority, updateTaskStatus } from "@/lib/actions";
 import { Popover } from "@/components/Popover";
 import { Avatar } from "@/components/Avatar";
 import type { Person } from "./types";
 
 export function StatusPill({ status, compact }: { status: TaskStatus; compact?: boolean }) {
-  const m = statusMeta(status);
+  const m = useStatuses().meta(status);
   return (
     <span
       className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-medium"
@@ -24,6 +25,7 @@ export function StatusPill({ status, compact }: { status: TaskStatus; compact?: 
 
 export function StatusSelect({ taskId, status }: { taskId: string; status: TaskStatus }) {
   const [value, setValue] = useOptimistic(status);
+  const { visible } = useStatuses();
   const [, start] = useTransition();
   return (
     <Popover
@@ -36,7 +38,7 @@ export function StatusSelect({ taskId, status }: { taskId: string; status: TaskS
       )}
     >
       {(close) =>
-        STATUSES.map((s) => (
+        visible.map((s) => (
           <button
             key={s.value}
             onClick={() => {

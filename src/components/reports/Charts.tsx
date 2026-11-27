@@ -2,7 +2,7 @@
 
 import { Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import type { TaskStatus } from "@prisma/client";
-import { formatMinutes, statusMeta } from "@/lib/constants";
+import { formatMinutes, statusMeta, STATUSES } from "@/lib/constants";
 
 const BAR = "#00A0E3";
 const AXIS = { fontSize: 11, fill: "#66706d" };
@@ -58,7 +58,7 @@ export function HoursRanking({ data }: { data: { label: string; minutes: number 
 }
 
 export function StatusChart({ data }: { data: { status: TaskStatus; count: number }[] }) {
-  const order: TaskStatus[] = ["TODO", "IN_PROGRESS", "REVIEW", "BLOCKED", "DONE"];
+  const order: TaskStatus[] = STATUSES.map((s) => s.value);
   const rows = order.map((s) => ({ label: statusMeta(s).label, count: data.find((d) => d.status === s)?.count ?? 0, color: statusMeta(s).color }));
   if (!rows.some((r) => r.count)) return <Empty text="No hay tareas con estos filtros." />;
   return (

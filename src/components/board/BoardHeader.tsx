@@ -215,7 +215,7 @@ export function BoardHeader({
             <span className="h-1.5 w-20 overflow-hidden rounded-full bg-line">
               <span className="block h-full bg-brand-500" style={{ width: `${pct}%` }} />
             </span>
-            {pct}% terminado
+            {pct}% cerrado
           </span>
           <span>{formatMinutes(stats.minutes)} registradas</span>
         </div>

@@ -6,7 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { canSeeDashboard, dashboardBoardsWhere } from "@/lib/access";
 import { redirect } from "next/navigation";
 import { buildDashboard, STATUS_ORDER, type PersonRow, type ProjectRow } from "@/lib/dashboard";
-import { fmtDate, formatMinutes, statusMeta } from "@/lib/constants";
+import { fmtDate, formatMinutes, statusMeta, isClosed } from "@/lib/constants";
 import type { TaskStatus } from "@prisma/client";
 import { Avatar } from "@/components/Avatar";
 import { HoursOverTime } from "@/components/reports/Charts";
@@ -193,7 +193,7 @@ function Header({ title, hint }: { title: string; hint?: string }) {
 function StatusLegend({ skipDone }: { skipDone?: boolean }) {
   return (
     <div className="flex flex-wrap gap-x-4 gap-y-1 px-4 pt-3 text-[11px] text-muted">
-      {STATUS_ORDER.filter((s) => !(skipDone && s === "DONE")).map((s) => (
+      {STATUS_ORDER.filter((s) => !(skipDone && isClosed(s))).map((s) => (
         <span key={s} className="inline-flex items-center gap-1.5">
           <span className="h-2.5 w-2.5 rounded-sm" style={{ background: statusMeta(s).color }} />
           {statusMeta(s).label}
@@ -205,7 +205,7 @@ function StatusLegend({ skipDone }: { skipDone?: boolean }) {
 
 /** Barra apilada por estado, con 2px de separación entre segmentos. */
 function StatusBar({ counts, total, scale = total, skipDone }: { counts: Record<TaskStatus, number>; total: number; scale?: number; skipDone?: boolean }) {
-  const order = STATUS_ORDER.filter((s) => !(skipDone && s === "DONE"));
+  const order = STATUS_ORDER.filter((s) => !(skipDone && isClosed(s)));
   return (
     <div className="flex h-3 w-full gap-[2px] overflow-hidden rounded bg-transparent">
       {total === 0 ? (
@@ -236,12 +236,12 @@ function ProjectItem({ p, range }: { p: ProjectRow; range: number }) {
           <span className="h-3 w-3 shrink-0 rounded" style={{ background: p.color }} />
           <span className="min-w-0 flex-1 truncate font-medium">{p.name}</span>
           <span className="text-lg font-semibold tabular-nums">{pct}%</span>
-          <span className="w-16 text-xs text-muted">terminado</span>
+          <span className="w-16 text-xs text-muted">cerrado</span>
         </div>
         <div className="mt-2 pl-6">
           <StatusBar counts={p.counts} total={p.total} />
           <p className="mt-1.5 flex flex-wrap gap-x-3 text-xs text-muted">
-            <span>{p.counts.DONE} de {p.total} tareas</span>
+            <span>{Math.round(p.progress * p.total)} de {p.total} tareas cerradas</span>
             {p.overdue > 0 && <span className="font-medium text-red-600">{p.overdue} atrasada{p.overdue === 1 ? "" : "s"}</span>}
             {p.counts.BLOCKED > 0 && <span className="text-amber-700">{p.counts.BLOCKED} bloqueada{p.counts.BLOCKED === 1 ? "" : "s"}</span>}
             <span>{formatMinutes(p.periodMinutes)} en {range} días</span>
