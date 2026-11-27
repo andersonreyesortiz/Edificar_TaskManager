@@ -74,9 +74,9 @@ export function ColumnCell({
     case "DATE":
       return (
         <input
-          type="date"
+          type={column.settings.time ? "datetime-local" : "date"}
           key={String(current)}
-          defaultValue={typeof current === "string" ? current : ""}
+          defaultValue={typeof current === "string" ? (column.settings.time ? (current.includes("T") ? current : `${current}T00:00`) : current.slice(0, 10)) : ""}
           onChange={(e) => save(e.target.value || null)}
           className="rounded-md bg-transparent px-1 py-1 text-xs outline-none hover:bg-canvas focus:bg-white focus:ring-1 focus:ring-line"
         />

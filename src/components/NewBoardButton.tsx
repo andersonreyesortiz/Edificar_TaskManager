@@ -1,9 +1,9 @@
 "use client";
 
-import { useState } from "react";
-import { Plus, X } from "lucide-react";
+import { useState, useTransition } from "react";
+import { FileSpreadsheet, Plus, X } from "lucide-react";
 import type { ColumnType } from "@prisma/client";
-import { createBoard } from "@/lib/actions";
+import { createBoard, importBoardFromExcel } from "@/lib/actions";
 import { BOARD_TEMPLATES, BUILTIN_COLUMNS, COLUMN_TYPES, columnTypeLabel } from "@/lib/columns";
 import { TYPE_ICONS } from "@/components/board/column-icons";
 import { Modal } from "./Modal";
@@ -16,6 +16,7 @@ export function NewBoardButton({ variant = "icon", departments = [] }: { variant
   const [template, setTemplate] = useState("blank");
   const [cols, setCols] = useState<Col[]>([]);
   const [hidden, setHidden] = useState<string[]>([]);
+  const [mode, setMode] = useState<"new" | "excel">("new");
 
   const pickTemplate = (id: string) => {
     setTemplate(id);
@@ -26,6 +27,7 @@ export function NewBoardButton({ variant = "icon", departments = [] }: { variant
     setTemplate("blank");
     setCols([]);
     setHidden([]);
+    setMode("new");
   };
 
   return (
@@ -40,6 +42,21 @@ export function NewBoardButton({ variant = "icon", departments = [] }: { variant
         </button>
       )}
       <Modal open={open} onClose={reset} title="Nuevo tablero">
+        <div className="mb-4 flex gap-1 rounded-lg border border-line p-0.5 text-sm">
+          {(["new", "excel"] as const).map((m) => (
+            <button
+              key={m}
+              type="button"
+              onClick={() => setMode(m)}
+              className={`flex flex-1 items-center justify-center gap-1.5 rounded-md px-3 py-1.5 ${mode === m ? "bg-brand-700 text-white" : "hover:bg-canvas"}`}
+            >
+              {m === "new" ? <><Plus size={14} /> En blanco o plantilla</> : <><FileSpreadsheet size={14} /> Importar desde Excel</>}
+            </button>
+          ))}
+        </div>
+        {mode === "excel" ? (
+          <ImportForm departments={departments} onCancel={reset} />
+        ) : (
         <form action={createBoard} className="space-y-4" onSubmit={() => setTimeout(reset, 0)}>
           <div>
             <label className="label">Nombre</label>
@@ -136,7 +153,61 @@ export function NewBoardButton({ variant = "icon", departments = [] }: { variant
             <button className="btn-primary">Crear tablero</button>
           </div>
         </form>
+        )}
       </Modal>
     </>
+  );
+}
+
+function ImportForm({ departments, onCancel }: { departments: { id: string; name: string }[]; onCancel: () => void }) {
+  const [error, setError] = useState("");
+  const [pending, start] = useTransition();
+  return (
+    <form
+      className="space-y-4"
+      onSubmit={(e) => {
+        e.preventDefault();
+        const fd = new FormData(e.currentTarget);
+        setError("");
+        start(async () => {
+          const r = await importBoardFromExcel(fd);
+          if (r?.error) setError(r.error);
+        });
+      }}
+    >
+      <div>
+        <label className="label">Archivo de Excel (.xlsx)</label>
+        <input name="file" type="file" required accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" className="input py-1.5" />
+        <p className="mt-1 text-xs text-muted">
+          Sirve una exportación de monday.com (con grupos y subelementos) o una tabla simple con encabezados en la primera fila. Cada columna se crea con el tipo
+          que corresponde: fecha, número, estado con etiquetas, texto o enlace.
+        </p>
+      </div>
+      <div>
+        <label className="label">Nombre (opcional)</label>
+        <input name="name" className="input" placeholder="Si lo dejas vacío, se toma del archivo" />
+      </div>
+      {departments.length > 0 && (
+        <div>
+          <label className="label">Departamento</label>
+          <select name="departmentId" defaultValue="" className="input">
+            <option value="">Sin departamento</option>
+            {departments.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+          </select>
+        </div>
+      )}
+      <label className="flex items-start gap-2 text-sm">
+        <input type="checkbox" name="matchPeople" className="mt-1 accent-brand-700" />
+        <span>
+          Llenar las columnas de personas con quienes ya están en la app
+          <span className="block text-xs text-muted">Si no lo marcas, esas columnas quedan vacías para completarlas después.</span>
+        </span>
+      </label>
+      {error && <p className="text-sm text-red-600">{error}</p>}
+      <div className="flex justify-end gap-2">
+        <button type="button" onClick={onCancel} className="btn-ghost">Cancelar</button>
+        <button className="btn-primary" disabled={pending}>{pending ? "Importando…" : "Importar y crear tablero"}</button>
+      </div>
+    </form>
   );
 }

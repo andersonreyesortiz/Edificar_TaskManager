@@ -3,7 +3,7 @@ import type { ColumnType } from "@prisma/client";
 /** Definiciones compartidas (cliente y servidor) de las columnas personalizadas. */
 
 export type ColumnLabel = { id: string; name: string; color: string };
-export type ColumnSettings = { labels?: ColumnLabel[]; unit?: string };
+export type ColumnSettings = { labels?: ColumnLabel[]; unit?: string; /** Fecha con hora */ time?: boolean };
 export type ColumnValue = string | number | boolean | string[] | null;
 
 export type BoardColumnDef = {
@@ -70,6 +70,7 @@ export function asSettings(json: unknown): ColumnSettings {
       .map((l) => ({ id: l.id, name: String(l.name ?? ""), color: String(l.color ?? "#c4c4c4") }));
   }
   if (typeof s.unit === "string") out.unit = s.unit;
+  if (s.time === true) out.time = true;
   return out;
 }
 
@@ -89,6 +90,8 @@ export function valueToText(col: BoardColumnDef, v: ColumnValue, people: { id: s
       return `${v}${col.settings.unit ? ` ${col.settings.unit}` : ""}`;
     case "RATING":
       return `${v}/5`;
+    case "DATE":
+      return String(v).replace("T", " ");
     default:
       return String(v);
   }

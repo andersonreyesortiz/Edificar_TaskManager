@@ -10,10 +10,11 @@ import { adminDepartmentIds, assertManageMembers, canManagePeople, isSuperAdmin,
 import { BOARD_COLORS, priorityMeta, statusMeta, isClosed, CLOSE_VERB, STATUSES } from "@/lib/constants";
 import { AuthError } from "next-auth";
 import { notify, sendInvitationEmail } from "@/lib/notify";
-import { BUILTIN_COLUMNS, COLUMN_TYPES, asSettings, columnTypeLabel, defaultSettings, valueToText, type BuiltinKey, type ColumnSettings, type ColumnValue } from "@/lib/columns";
+import { LABEL_COLORS, BUILTIN_COLUMNS, COLUMN_TYPES, asSettings, columnTypeLabel, defaultSettings, valueToText, type BuiltinKey, type ColumnSettings, type ColumnValue } from "@/lib/columns";
 import { emailProviderId, signIn, signOut } from "@/auth";
 import { asStatusConfig } from "@/lib/status-config";
 import { notifyMentions } from "@/lib/mentions";
+import type { Cell } from "@/lib/import-excel";
 
 // ---------- utilidades ----------
 
@@ -133,6 +134,117 @@ export async function createBoard(formData: FormData) {
   await log(user, "board.created", `creó el tablero «${name}»`, { boardId: board.id });
   refresh();
   redirect(`/boards/${board.id}`);
+}
+
+/**
+ * Crea un tablero a partir de un Excel (exportación de monday.com o una tabla simple):
+ * grupos, tareas, subtareas y una columna del tipo adecuado por cada columna del archivo.
+ */
+export async function importBoardFromExcel(formData: FormData): Promise<{ error: string } | void> {
+  const user = await requireUser();
+  if (user.role === "GUEST") return { error: "Los invitados no pueden crear tableros." };
+  const file = formData.get("file");
+  if (!(file instanceof File) || !file.size) return { error: "Elige un archivo de Excel (.xlsx)." };
+  if (file.size > 8 * 1024 * 1024) return { error: "El archivo pesa más de 8 MB." };
+  const { default: readXlsxFile } = await import("read-excel-file/node");
+  const { parseSheet, inferColumns, cellToValue } = await import("@/lib/import-excel");
+  let rows: Cell[][];
+  try {
+    rows = (await readXlsxFile(Buffer.from(await file.arrayBuffer()))) as Cell[][];
+  } catch {
+    return { error: "No se pudo leer el archivo. Debe ser un Excel .xlsx." };
+  }
+  const sheet = parseSheet(rows);
+  const total = sheet.groups.reduce((a, g) => a + g.items.length, 0);
+  if (!total) return { error: "No encontré tareas en el archivo." };
+  if (total > 3000) return { error: "El archivo tiene más de 3000 filas. Divídelo en varios." };
+  const cols = inferColumns(sheet).slice(0, 60);
+  const matchPeople = formData.get("matchPeople") === "on";
+  const people = matchPeople ? await prisma.user.findMany({ where: { active: true }, select: { id: true, name: true, email: true } }) : [];
+
+  const name = (str(formData.get("name")) || sheet.name || file.name.replace(/\.xlsx?$/i, "")).slice(0, 120);
+  const description = sheet.description?.slice(0, 500) ?? null;
+  const myDepts = isSuperAdmin(user)
+    ? (await prisma.department.findMany({ select: { id: true } })).map((d) => d.id)
+    : (await prisma.departmentMember.findMany({ where: { userId: user.id }, select: { departmentId: true } })).map((d) => d.departmentId);
+  const askedDept = str(formData.get("departmentId"));
+  const departmentId = askedDept && myDepts.includes(askedDept) ? askedDept : null;
+  const count = await prisma.board.count();
+  const subCount = sheet.groups.reduce((a, g) => a + g.items.reduce((b, it) => b + it.subitems.length, 0), 0);
+
+  const boardId = await prisma.$transaction(
+    async (tx) => {
+      const board = await tx.board.create({
+        data: {
+          name,
+          description,
+          color: BOARD_COLORS[count % BOARD_COLORS.length],
+          ownerId: user.id,
+          // El archivo trae sus propias columnas de estado y fechas: se ocultan las fijas que no usa.
+          hiddenColumns: ["status", "priority", "due", "time"],
+          departmentId,
+          members: { create: { userId: user.id } },
+        },
+      });
+      const created = await tx.boardColumn.createManyAndReturn({
+        data: cols.map((c, position) => ({ boardId: board.id, name: c.name.slice(0, 60), type: c.type, position, settings: c.settings as Prisma.InputJsonValue })),
+        select: { id: true, position: true },
+      });
+      const colId = (i: number) => created.find((c) => c.position === i)!.id;
+      const widths: Record<string, number> = { title: 320 };
+      cols.forEach((c, i) => {
+        if (c.type === "DATE" && c.settings.time) widths[colId(i)] = 190;
+        if (c.type === "TEXT") widths[colId(i)] = 220;
+      });
+      await tx.board.update({ where: { id: board.id }, data: { columnWidths: widths } });
+
+      const groups = await tx.group.createManyAndReturn({
+        data: sheet.groups.map((g, position) => ({ boardId: board.id, name: g.name.slice(0, 120), color: LABEL_COLORS[position % LABEL_COLORS.length], position })),
+        select: { id: true, position: true },
+      });
+      const values: { taskId: string; columnId: string; value: Prisma.InputJsonValue }[] = [];
+      const pushValues = (taskId: string, v: Record<string, Cell>) =>
+        cols.forEach((c, i) => {
+          if (!(c.name in v)) return;
+          const val = cellToValue(c, v[c.name], people);
+          if (val !== null) values.push({ taskId, columnId: colId(i), value: val as Prisma.InputJsonValue });
+        });
+
+      for (const [gi, g] of sheet.groups.entries()) {
+        const groupId = groups.find((x) => x.position === gi)!.id;
+        const parents = await tx.task.createManyAndReturn({
+          data: g.items.map((it, position) => ({ boardId: board.id, groupId, title: it.title.slice(0, 300), position, createdById: user.id })),
+          select: { id: true, position: true },
+        });
+        const subData: Prisma.TaskCreateManyInput[] = [];
+        const subSource: Record<string, Cell>[] = [];
+        g.items.forEach((it, pi) => {
+          const parentId = parents.find((p) => p.position === pi)!.id;
+          pushValues(parentId, it.values);
+          it.subitems.forEach((st, si) => {
+            subData.push({ boardId: board.id, groupId, parentId, title: st.title.slice(0, 300), position: si, createdById: user.id });
+            subSource.push(st.values);
+          });
+        });
+        if (subData.length) {
+          const subs = await tx.task.createManyAndReturn({ data: subData, select: { id: true } });
+          subs.forEach((s, i) => pushValues(s.id, subSource[i]));
+        }
+      }
+      for (let i = 0; i < values.length; i += 1000) await tx.taskColumnValue.createMany({ data: values.slice(i, i + 1000) });
+      return board.id;
+    },
+    { timeout: 60_000 },
+  );
+
+  await log(
+    user,
+    "board.imported",
+    `creó el tablero «${name}» importando «${file.name}»: ${sheet.groups.length} grupos, ${total} tareas, ${subCount} subtareas y ${cols.length} columnas`,
+    { boardId },
+  );
+  refresh();
+  redirect(`/boards/${boardId}`);
 }
 
 export async function updateBoard(boardId: string, data: { name?: string; description?: string | null; color?: string }) {
@@ -394,7 +506,7 @@ function cleanValue(type: ColumnType, settings: ColumnSettings, v: unknown): Col
     case "CHECKBOX":
       return v === true ? true : null;
     case "DATE":
-      return /^\d{4}-\d{2}-\d{2}$/.test(String(v)) ? String(v) : null;
+      return /^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2})?$/.test(String(v)) ? String(v) : null;
     case "STATUS":
       return ids.has(String(v)) ? String(v) : null;
     case "DROPDOWN": {
